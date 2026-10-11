@@ -14,3 +14,9 @@ The React Compiler is not enabled on this template because of its impact on dev 
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+## Deployment
+
+GitHub Actions deploys the production build to GitHub Pages when changes are pushed to `main`. Pull requests and pushes to `develop` run lint and build checks without deploying.
+
+After deployment, the site will be available at <https://l83y12.github.io/sgu_cnpm/>.
