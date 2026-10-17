@@ -1,22 +1,74 @@
-# React + Vite
+# SGU CNPM
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend application built with React, Vite, and TypeScript.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```sh
+npm ci
+npm run dev
+```
 
-## React Compiler
+Before opening a pull request, run:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```sh
+npm run lint
+npm run typecheck
+npm run build
+```
 
-## Expanding the ESLint configuration
+## Git workflow
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `main` contains releasable code and deploys to GitHub Pages.
+- `develop` is the integration branch.
+- Create short-lived branches from `develop`: `feature/<description>`,
+  `fix/<description>`, or `docs/<description>`.
+- Open a pull request into `develop`; merge to `main` through a pull request
+  after the integrated changes pass CI.
+- Do not push feature work directly to `main` or `develop`.
+
+The CI workflow checks pull requests targeting `main` and `develop`, and deploys
+only pushes to `main`. Configure branch protection in GitHub repository settings
+to require pull requests and passing checks; workflow files cannot enforce that
+repository setting by themselves.
+
+## Team responsibilities
+
+Work is divided by primary ownership; coordinate interfaces and review changes
+that affect both platforms.
+
+| Stage | Linh | Nhung |
+| --- | --- | --- |
+| 1. Foundation | Repository architecture, React/Vite/TypeScript, Git strategy, CI foundation, code conventions, API contract | Environment setup, Git basics, repository orientation, CI and documentation support |
+| 2. React Web | Web architecture, routing, layout, state, API layer | UI components, POI list/card, designed screens |
+| 3. API, state, i18n, and Web audio | Axios/API integration, Zustand/store, i18n and audio architecture | Language switcher, audio UI, loading/error/empty states |
+| 4. React Native | Mobile structure/navigation and shared API/store logic | Mobile screens, cards/lists/details, styling and components |
+| 5. GPS, geofence, and offline | LocationService, GeofenceEngine, offline architecture, IndexedDB/Service Worker | GPS/permission states, map/markers and related screens |
+| 6. Advanced audio and integration | NarrationEngine, audio fallback, Web/Mobile language and audio integration | Audio player UI, Mobile background audio, scenario testing |
+| 7. CI/CD and integration | GitHub Actions, deployment, EAS build, environment/secrets, integration flow | Run tests/builds, verify and fix UI/integration issues |
+| 8. Completion and report | Coordinate technical integration | Responsive/UI polish, test cases, screenshots/demo video, report support |
+
+## API integration
+
+The public API route inventory and items awaiting backend confirmation are
+tracked in [docs/api-contract.md](./docs/api-contract.md). It is a draft based
+on the lecturer-provided project material, which remains unchanged and is used
+as the source of project requirements. It is not a replacement for the
+backend's authoritative OpenAPI specification. Behavioral details stated in
+the project material are captured there; only details not specified by the
+material are marked for backend confirmation.
+
+## Web UI collaboration
+
+- `src/app/` owns route configuration and the shared page layout.
+- `src/features/poi/` owns POI pages and the shared UI model/props in
+  `types.ts`.
+- Routes use hash-based URLs so nested pages continue to work on GitHub Pages.
+- Nhung can add POI card/list components under
+  `src/features/poi/components/`, importing `Poi`, `PoiCardProps`, and
+  `PoiListProps` from `types.ts`. The current `Poi` is a frontend display model,
+  not the backend response DTO; API mapping belongs at the API boundary.
 
 ## Deployment
 
-GitHub Actions deploys the production build to GitHub Pages when changes are pushed to `main`. Pull requests and pushes to `develop` run lint and build checks without deploying.
-
-After deployment, the site will be available at <https://l83y12.github.io/sgu_cnpm/>.
+GitHub Actions deploys `main` to <https://l83y12.github.io/sgu_cnpm/>.
