@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import sguBuilding from './assets/sgu-building.png'
 import './App.css'
 
@@ -81,12 +81,36 @@ function App() {
   const [selected, setSelected] = useState<Place | null>(null)
   const [playing, setPlaying] = useState(false)
   const [language, setLanguage] = useState('VI')
+  const [poiStatus, setPoiStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [poiItems, setPoiItems] = useState<Place[]>([])
 
-  const filteredPlaces = useMemo(() => places.filter((place) => {
+  useEffect(() => {
+    const demoError = new URLSearchParams(window.location.search).get('poiState') === 'error'
+    const timer = window.setTimeout(() => {
+      if (demoError) {
+        setPoiStatus('error')
+      } else {
+        setPoiItems(places)
+        setPoiStatus('success')
+      }
+    }, 650)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  function retryLoadPlaces() {
+    setPoiStatus('loading')
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`)
+    window.setTimeout(() => {
+      setPoiItems(places)
+      setPoiStatus('success')
+    }, 500)
+  }
+
+  const filteredPlaces = useMemo(() => poiItems.filter((place) => {
     const matchesCategory = category === 'Tất cả' || place.category === category
     const matchesQuery = `${place.name} ${place.category} ${place.location}`.toLowerCase().includes(query.toLowerCase())
     return matchesCategory && matchesQuery && (activeNav !== 'Đã lưu' || saved.includes(place.id))
-  }), [activeNav, category, query, saved])
+  }), [activeNav, category, poiItems, query, saved])
 
   function toggleSaved(id: number) {
     setSaved((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
@@ -145,7 +169,7 @@ function App() {
             <div className="section-heading"><div><div className="section-kicker">ĐIỂM ĐẾN GẦN BẠN</div><h2>{activeNav === 'Đã lưu' ? 'Nơi bạn muốn ghé lại' : activeNav === 'Bản đồ' ? 'Khám phá trên bản đồ' : 'Đi đâu một chút?'}</h2><p>{activeNav === 'Đã lưu' ? `${filteredPlaces.length} địa điểm đã lưu cho lần ghé thăm tiếp theo` : 'Những điểm thú vị chỉ cách bạn vài bước chân.'}</p></div><button className="view-all" onClick={() => setActiveNav('Bản đồ')}>Xem bản đồ <Icon name="arrow" size={16} /></button></div>
             <div className="toolbar"><div className="category-list" role="group" aria-label="Lọc theo danh mục">{categories.map((item) => <button key={item} className={`category-chip ${category === item ? 'selected' : ''}`} onClick={() => setCategory(item)}>{item === 'Tất cả' && <span className="chip-dot" />}{item}</button>)}</div><div className="filter-actions"><label className="search-box"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm địa điểm..." aria-label="Tìm địa điểm" />{query && <button aria-label="Xóa tìm kiếm" onClick={() => setQuery('')}><Icon name="close" size={15} /></button>}</label><button className="filter-button" aria-label="Bộ lọc"><Icon name="sliders" size={17} /></button></div></div>
 
-            {filteredPlaces.length > 0 ? <div className="poi-grid">{filteredPlaces.map((place) => <article className="poi-card" key={place.id}>
+            {poiStatus === 'loading' ? <div className="poi-grid" aria-label="Đang tải địa điểm" aria-busy="true">{[1, 2, 3, 4].map((item) => <article className="poi-skeleton" key={item}><div className="skeleton-image" /><div className="skeleton-body"><i className="skeleton-line short" /><i className="skeleton-line title" /><i className="skeleton-line" /><i className="skeleton-line medium" /><div className="skeleton-footer"><i /><i /></div></div></article>)}</div> : poiStatus === 'error' ? <div className="error-state" role="alert"><span className="error-icon"><Icon name="map" size={22} /></span><div className="error-copy"><strong>Chưa tải được địa điểm</strong><p>Đã có sự cố khi tải danh sách. Bạn thử lại sau một chút nhé.</p></div><button className="retry-button" onClick={retryLoadPlaces}><Icon name="arrow" size={15} /> Thử lại</button></div> : filteredPlaces.length > 0 ? <div className="poi-grid">{filteredPlaces.map((place) => <article className="poi-card" key={place.id}>
               <button className="poi-image-button" onClick={() => setSelected(place)} aria-label={`Xem ${place.name}`}><img className="poi-image" src={place.image} alt="" /><span className="image-tag">{place.tag}</span></button>
               <button className={`save-button ${saved.includes(place.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(place.id)} aria-label={saved.includes(place.id) ? 'Bỏ lưu địa điểm' : 'Lưu địa điểm'}><Icon name="heart" size={18} /></button>
               <div className="poi-info"><div className="poi-meta"><span>{place.category}</span><span className="rating"><Icon name="star" size={13} /> {place.rating}</span></div><button className="poi-title" onClick={() => setSelected(place)}>{place.name}</button><p className="poi-description">{place.description}</p><div className="poi-footer"><span><Icon name="pin" size={14} /> {place.distance}</span><span className="footer-separator" /><span><Icon name="clock" size={14} /> {place.walk} đi bộ</span><button onClick={() => setSelected(place)} aria-label={`Chi tiết ${place.name}`}><Icon name="arrow" size={16} /></button></div></div>
