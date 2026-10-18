@@ -58,6 +58,17 @@ backend's authoritative OpenAPI specification. Behavioral details stated in
 the project material are captured there; only details not specified by the
 material are marked for backend confirmation.
 
+## Web UI collaboration
+
+- `src/app/` owns route configuration and the shared page layout.
+- `src/features/poi/` owns POI pages and the shared UI model/props in
+  `types.ts`.
+- Routes use hash-based URLs so nested pages continue to work on GitHub Pages.
+- Nhung can add POI card/list components under
+  `src/features/poi/components/`, importing `Poi`, `PoiCardProps`, and
+  `PoiListProps` from `types.ts`. The current `Poi` is a frontend display model,
+  not the backend response DTO; API mapping belongs at the API boundary.
+
 ## Deployment
 
 GitHub Actions deploys `main` to <https://l83y12.github.io/sgu_cnpm/>.
