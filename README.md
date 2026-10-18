@@ -9,6 +9,11 @@ npm ci
 npm run dev
 ```
 
+For API integration, copy `.env.example` to `.env.local` and set
+`VITE_API_BASE_URL` to the backend API base URL, including its mounted API
+prefix (for example, `/api/v1`). The URL is intentionally not prefilled until
+the backend environment is confirmed.
+
 Before opening a pull request, run:
 
 ```sh
@@ -68,6 +73,12 @@ material are marked for backend confirmation.
   `src/features/poi/components/`, importing `Poi`, `PoiCardProps`, and
   `PoiListProps` from `types.ts`. The current `Poi` is a frontend display model,
   not the backend response DTO; API mapping belongs at the API boundary.
+- Campus map UI can use `MappablePoi` from `src/features/poi/types.ts` and
+  `CampusMapProps` from `src/features/map/types.ts`. A map marker requires
+  coordinates; POIs without coordinates remain valid for list-only UI.
+- The shared Axios client lives in `src/api/`; POI endpoint calls live in
+  `src/features/poi/api/`. The POI response remains `unknown` until backend
+  field types are confirmed.
 
 ## Deployment
 
