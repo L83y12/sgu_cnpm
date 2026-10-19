@@ -9,7 +9,7 @@ export type MapPoi = {
   lng: number
 }
 
-type LatLng = [number, number]
+type LatLng = readonly [number, number]
 type LeafletMarker = {
   addTo: (map: LeafletMap) => LeafletMarker
   bindPopup: (content: HTMLElement | string) => LeafletMarker
@@ -35,7 +35,6 @@ declare global {
   interface Window { L?: LeafletApi }
 }
 
-const campusCenter: LatLng = [10.7597, 106.68246]
 let leafletLoader: Promise<LeafletApi> | null = null
 
 function loadLeaflet(): Promise<LeafletApi> {
@@ -88,10 +87,11 @@ function makeInfoContent(place: MapPoi) {
   return content
 }
 
-export function LeafletMapView({ places, selectedPlaceId, onSelectPlace }: {
+export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center }: {
   places: readonly MapPoi[]
   selectedPlaceId: number | null
   onSelectPlace: (place: MapPoi) => void
+  center: LatLng
 }) {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<LeafletMap | null>(null)
@@ -104,7 +104,7 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace }: {
     let activeMap: LeafletMap | null = null
     void loadLeaflet().then((L) => {
       if (cancelled || !mapElement.current) return
-      const map = L.map(mapElement.current, { scrollWheelZoom: true }).setView(campusCenter, 17)
+      const map = L.map(mapElement.current, { scrollWheelZoom: true }).setView(center, 18)
       activeMap = map
       mapInstance.current = map
       L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
@@ -140,7 +140,7 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace }: {
       markers.current.clear()
       activeMap?.remove()
     }
-  }, [onSelectPlace, places])
+  }, [center, onSelectPlace, places])
 
   useEffect(() => {
     if (!selectedPlaceId || !mapInstance.current) return
