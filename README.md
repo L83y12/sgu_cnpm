@@ -9,6 +9,18 @@ npm ci
 npm run dev
 ```
 
+### Campus map
+
+The map uses Leaflet with OpenStreetMap data from the OSM tile server and does
+not need an API key. Internet access is required to load the map library and
+tiles. The map keeps visible OpenStreetMap attribution; do not use public tile
+servers for bulk downloads or offline tile packages.
+
+The four POI coordinates in `src/App.tsx` are approximate demo positions around
+the SGU main campus. Verify them before using the map for campus navigation.
+The browser requests location permission only when the user selects
+**Vị trí của tôi**.
+
 Before opening a pull request, run:
 
 ```sh
