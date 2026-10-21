@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import sguBuilding from './assets/sgu-building.png'
 import { LeafletMapView, type MapPoi } from './features/map/LeafletMapView'
+import { localeOptions, translate, type Locale, type TranslationKey } from './i18n/translations'
 import './App.css'
 
 type Category = 'Tất cả' | 'Kiến trúc' | 'Học tập' | 'Ẩm thực' | 'Không gian xanh' | 'Thể thao'
@@ -20,10 +21,47 @@ type Place = {
   campusId?: (typeof campusMaps)[number]['id']
 }
 
+type Coordinates = { lat: number; lng: number }
+
+const localeTags: Record<Locale, string> = {
+  vi: 'vi-VN',
+  en: 'en-US',
+  ko: 'ko-KR',
+  ja: 'ja-JP',
+  zh: 'zh-CN',
+}
+
+const categoryTranslationKeys: Record<Category, TranslationKey> = {
+  'Tất cả': 'all',
+  'Kiến trúc': 'architecture',
+  'Học tập': 'study',
+  'Ẩm thực': 'food',
+  'Không gian xanh': 'green',
+  'Thể thao': 'sports',
+}
+
+function distanceBetween(first: Coordinates, second: Coordinates): number {
+  const radians = Math.PI / 180
+  const latitudeDifference = (second.lat - first.lat) * radians
+  const longitudeDifference = (second.lng - first.lng) * radians
+  const firstLatitude = first.lat * radians
+  const secondLatitude = second.lat * radians
+  const haversine = Math.sin(latitudeDifference / 2) ** 2
+    + Math.cos(firstLatitude) * Math.cos(secondLatitude) * Math.sin(longitudeDifference / 2) ** 2
+  return 6_371_000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+}
+
+function formatDistance(distance: number, locale: Locale): string {
+  const formatter = new Intl.NumberFormat(localeTags[locale], { maximumFractionDigits: distance >= 1000 ? 1 : 0 })
+  return distance >= 1000
+    ? `${formatter.format(distance / 1000)} ${translate(locale, 'kilometers')}`
+    : `${formatter.format(Math.round(distance))} ${translate(locale, 'meters')}`
+}
+
 const places: Place[] = [
   {
     id: 1,
-    name: 'Tòa nhà chính SGU',
+    name: 'Tòa nhà chính SGU - Tòa C',
     category: 'Kiến trúc',
     description: 'Một góc Sài Gòn xưa giữa lòng khuôn viên đại học, nơi lưu giữ những câu chuyện của nhiều thế hệ sinh viên.',
     distance: '120 m', walk: '2 phút', rating: '4.9', tag: 'Biểu tượng SGU', location: '273 An Dương Vương, Quận 5', lat: 10.759988109684326, lng: 106.68214083789893, campusId: 'main',
@@ -31,7 +69,7 @@ const places: Place[] = [
   },
   {
     id: 2,
-    name: 'Thư viện trung tâm',
+    name: 'Trung tâm học liệu - KLF',
     category: 'Học tập',
     description: 'Không gian yên tĩnh để đọc, học nhóm và khám phá kho tài liệu dành cho sinh viên.',
     distance: '260 m', walk: '4 phút', rating: '4.8', tag: 'Góc yên tĩnh', location: 'Thư viện KLF, Trường Đại học Sài Gòn', lat: 10.759846314437505, lng: 106.68250612374378, campusId: 'main',
@@ -42,16 +80,8 @@ const places: Place[] = [
     name: 'Sân trường thân quen',
     category: 'Không gian xanh',
     description: 'Hàng cây rợp bóng và những chiếc ghế đá quen thuộc — điểm hẹn giữa các tiết học.',
-    distance: '340 m', walk: '5 phút', rating: '4.7', tag: 'Được yêu thích', location: 'Sân trung tâm, SGU', lat: 10.75936, lng: 106.68192,
+    distance: '340 m', walk: '5 phút', rating: '4.7', tag: 'Được yêu thích', location: 'Sân trung tâm, SGU', lat: 10.75936, lng: 106.68192, campusId: 'main',
     image: 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=1000&q=85',
-  },
-  {
-    id: 4,
-    name: 'Cà phê Góc Nhỏ',
-    category: 'Ẩm thực',
-    description: 'Cà phê rang thơm, món ăn nhẹ và một chỗ nghỉ chân dễ chịu sau vòng tham quan.',
-    distance: '450 m', walk: '6 phút', rating: '4.6', tag: 'Sinh viên gợi ý', location: 'Nguyễn Trãi, Quận 5', lat: 10.76024, lng: 106.68155,
-    image: 'https://images.unsplash.com/photo-1445116572660-236099ec97a0?auto=format&fit=crop&w=1000&q=85',
   },
   {
     id: 5,
@@ -93,6 +123,166 @@ const places: Place[] = [
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Cơ sở chính SGU', lat: 10.75964525637814, lng: 106.68143341142253, campusId: 'main',
     image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
   },
+  {
+    id: 10,
+    name: 'Nhà đa năng - sân bóng rổ',
+    category: 'Thể thao',
+    description: 'Khu vực sân bóng rổ thuộc Nhà đa năng của Cơ sở chính SGU.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Nhà đa năng, Cơ sở chính SGU', lat: 10.75957763302768, lng: 106.68181199492993, campusId: 'main',
+    image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
+  },
+  {
+    id: 11,
+    name: 'Nhà đa năng - sân cầu lông',
+    category: 'Thể thao',
+    description: 'Khu vực sân cầu lông thuộc Nhà đa năng của Cơ sở chính SGU.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Nhà đa năng, Cơ sở chính SGU', lat: 10.759480794792038, lng: 106.68153036298408, campusId: 'main',
+    image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
+  },
+  {
+    id: 12,
+    name: 'Nhà đa năng - khu vực bóng bàn',
+    category: 'Thể thao',
+    description: 'Khu vực bóng bàn thuộc Nhà đa năng của Cơ sở chính SGU.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Nhà đa năng, Cơ sở chính SGU', lat: 10.759316762604941, lng: 106.68158199550778, campusId: 'main',
+    image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
+  },
+  {
+    id: 13,
+    name: 'Tòa E',
+    category: 'Kiến trúc',
+    description: 'Tòa E trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.759056558527996, lng: 106.6818267073545, campusId: 'main',
+    image: sguBuilding,
+  },
+  {
+    id: 14,
+    name: 'Tòa A',
+    category: 'Kiến trúc',
+    description: 'Tòa A trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.75909281217745, lng: 106.68241024658684, campusId: 'main',
+    image: sguBuilding,
+  },
+  {
+    id: 15,
+    name: 'Tòa nhà hội trường A',
+    category: 'Học tập',
+    description: 'Tòa nhà hội trường A trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Hội trường', location: 'Cơ sở chính SGU', lat: 10.759629468856865, lng: 106.6830846497268, campusId: 'main',
+    image: sguBuilding,
+  },
+  {
+    id: 16,
+    name: 'Khu tự học (1)',
+    category: 'Học tập',
+    description: 'Khu vực tự học trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Tự học', location: 'Cơ sở chính SGU', lat: 10.760005861266407, lng: 106.68255311273134, campusId: 'main',
+    image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=85',
+  },
+  {
+    id: 17,
+    name: 'Khu tự học (2)',
+    category: 'Học tập',
+    description: 'Khu vực tự học trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Tự học', location: 'Cơ sở chính SGU', lat: 10.759748943794909, lng: 106.68265168391322, campusId: 'main',
+    image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=85',
+  },
+  {
+    id: 18,
+    name: 'Hội trường C',
+    category: 'Học tập',
+    description: 'Hội trường C trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Hội trường', location: 'Cơ sở chính SGU', lat: 10.76008934399489, lng: 106.68244113162366, campusId: 'main',
+    image: sguBuilding,
+  },
+  {
+    id: 19,
+    name: 'Hội trường B',
+    category: 'Học tập',
+    description: 'Hội trường B trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Hội trường', location: 'Cơ sở chính SGU', lat: 10.759622281169316, lng: 106.68262352183645, campusId: 'main',
+    image: sguBuilding,
+  },
+  {
+    id: 20,
+    name: 'Khu Hiệu Bộ - HB',
+    category: 'Kiến trúc',
+    description: 'Khu Hiệu Bộ (HB) trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.76046995404809, lng: 106.68224883220537, campusId: 'main',
+    image: sguBuilding,
+  },
+  {
+    id: 21,
+    name: 'Tòa D',
+    category: 'Kiến trúc',
+    description: 'Tòa D trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.760277065043367, lng: 106.68176021257332, campusId: 'main',
+    image: sguBuilding,
+  },
+  {
+    id: 22,
+    name: 'Tòa A',
+    category: 'Kiến trúc',
+    description: 'Tòa A thuộc Cơ sở 1 Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 1', lat: 10.779236017474704, lng: 106.68458720350972, campusId: 'campus-1',
+    image: sguBuilding,
+  },
+  {
+    id: 23,
+    name: 'Khu tự học',
+    category: 'Học tập',
+    description: 'Khu vực tự học tại Cơ sở 1 Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Tự học', location: 'Cơ sở 1', lat: 10.77927488221519, lng: 106.6842995360494, campusId: 'campus-1',
+    image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=85',
+  },
+  {
+    id: 24,
+    name: 'Tòa B',
+    category: 'Kiến trúc',
+    description: 'Tòa B thuộc Cơ sở 1 Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 1', lat: 10.779278175818034, lng: 106.68389116972537, campusId: 'campus-1',
+    image: sguBuilding,
+  },
+  {
+    id: 25,
+    name: 'Tòa C',
+    category: 'Kiến trúc',
+    description: 'Tòa C thuộc Cơ sở 1 Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 1', lat: 10.77907858349214, lng: 106.68352169543397, campusId: 'campus-1',
+    image: sguBuilding,
+  },
+  {
+    id: 26,
+    name: 'Căn tin',
+    category: 'Ẩm thực',
+    description: 'Căn tin trong khuôn viên Cơ sở 1 Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Ẩm thực', location: 'Cơ sở 1', lat: 10.77915631253372, lng: 106.68347207456736, campusId: 'campus-1',
+    image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1000&q=85',
+  },
+  {
+    id: 27,
+    name: 'Tòa B',
+    category: 'Kiến trúc',
+    description: 'Tòa B thuộc Cơ sở 2 Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 2', lat: 10.782978273047895, lng: 106.7061686392335, campusId: 'campus-2',
+    image: sguBuilding,
+  },
+  {
+    id: 28,
+    name: 'Tòa A',
+    category: 'Kiến trúc',
+    description: 'Tòa A thuộc Cơ sở 2 Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 2', lat: 10.783124472482674, lng: 106.70595754077915, campusId: 'campus-2',
+    image: sguBuilding,
+  },
+  {
+    id: 29,
+    name: 'Tòa C',
+    category: 'Kiến trúc',
+    description: 'Tòa C thuộc Cơ sở 2 Trường Đại học Sài Gòn.',
+    distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 2', lat: 10.783606678010011, lng: 106.70673011804736, campusId: 'campus-2',
+    image: sguBuilding,
+  },
 ]
 
 const categories: Category[] = ['Tất cả', 'Kiến trúc', 'Học tập', 'Ẩm thực', 'Không gian xanh', 'Thể thao']
@@ -101,19 +291,19 @@ const campusMaps = [
   {
     id: 'main',
     label: 'Cơ sở chính',
-    address: '273 An Dương Vương, Quận 5',
+    address: '273 An Dương Vương, Chợ Quán, TP.HCM',
     center: [10.759694263941617, 106.68134847001345],
   },
   {
     id: 'campus-1',
     label: 'Cơ sở 1',
-    address: 'An Dương Vương, Quận 5',
+    address: '105 Bà Huyện Thanh Quan, Xuân Hòa, TP.HCM',
     center: [10.779396081899925, 106.68336718765391],
   },
   {
     id: 'campus-2',
     label: 'Cơ sở 2',
-    address: 'Quận 3, TP. Hồ Chí Minh',
+    address: '4 Tôn Đức Thắng, Sài Gòn, TP.HCM',
     center: [10.784147728899818, 106.70524251410139],
   },
 ] as const
@@ -154,47 +344,78 @@ function App() {
   const [selected, setSelected] = useState<Place | null>(null)
   const [mapSelection, setMapSelection] = useState<Place | null>(null)
   const [qrOpen, setQrOpen] = useState(false)
-  const [qrMessage, setQrMessage] = useState('Đưa mã QR địa điểm vào khung hình để quét.')
+  const [qrMessage, setQrMessage] = useState('')
   const [qrCode, setQrCode] = useState('')
   const qrVideo = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
-  const [narrationMessage, setNarrationMessage] = useState('Chọn một địa điểm trong danh sách để nghe thuyết minh.')
-  const [language, setLanguage] = useState('VI')
+  const [narrationMessage, setNarrationMessage] = useState('')
+  const [language, setLanguage] = useState<Locale>('vi')
+  const [userPosition, setUserPosition] = useState<Coordinates | null>(null)
   const [poiStatus, setPoiStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [poiItems, setPoiItems] = useState<Place[]>([])
+  const t = useCallback((key: TranslationKey, values?: Record<string, string | number>) => translate(language, key, values), [language])
   const activeCampusPlaces = useMemo(() => poiItems.filter((place) => place.campusId === activeCampus), [activeCampus, poiItems])
+  const activeCampusNearbyPlaces = useMemo(() => {
+    if (!userPosition) return activeCampusPlaces
+    return [...activeCampusPlaces].sort((first, second) =>
+      distanceBetween(userPosition, first) - distanceBetween(userPosition, second))
+  }, [activeCampusPlaces, userPosition])
+  const sortedPlaces = useMemo(() => {
+    if (!userPosition) return poiItems
+    return [...poiItems].sort((first, second) =>
+      distanceBetween(userPosition, first) - distanceBetween(userPosition, second))
+  }, [poiItems, userPosition])
+  const handleUserLocation = useCallback((position: Coordinates) => setUserPosition(position), [])
+
+  useEffect(() => {
+    document.title = t('pageTitle')
+  }, [t])
+
+  function displayDistance(place: Place): string {
+    return userPosition ? formatDistance(distanceBetween(userPosition, place), language) : place.distance
+  }
+
+  function changeLanguage(nextLanguage: Locale) {
+    setLanguage(nextLanguage)
+    setNarrationMessage(mapSelection
+      ? translate(nextLanguage, mapSelection && nextLanguage === 'vi' ? 'selectedReady' : 'narrationUnsupported', mapSelection ? { name: mapSelection.name } : undefined)
+      : translate(nextLanguage, 'narrationIdle'))
+    if (qrOpen) setQrMessage(translate(nextLanguage, 'qrStart'))
+  }
 
   const handleMapSelect = useCallback((place: MapPoi) => {
     const matchingPlace = poiItems.find((item) => item.id === place.id)
     if (matchingPlace) {
       setMapSelection(matchingPlace)
-      setNarrationMessage(language === 'VI' ? `${matchingPlace.name} sẵn sàng phát thuyết minh.` : 'Bản thuyết minh tiếng Anh chưa có; hiện có Tiếng Việt.')
+      setNarrationMessage(language === 'vi'
+        ? translate(language, 'selectedReady', { name: matchingPlace.name })
+        : translate(language, 'narrationUnsupported'))
     }
   }, [language, poiItems])
 
   function toggleMapNarration() {
     if (!mapSelection) return
-    if (language !== 'VI') {
-      setNarrationMessage('Bản thuyết minh tiếng Anh chưa có; hãy chọn Tiếng Việt để nghe.')
+    if (language !== 'vi') {
+      setNarrationMessage(t('narrationUnsupported'))
       return
     }
     if (playing) {
       window.speechSynthesis?.cancel()
       setPlaying(false)
-      setNarrationMessage('Đã dừng thuyết minh.')
+      setNarrationMessage(t('narrationStopped'))
       return
     }
     if (!('speechSynthesis' in window)) {
-      setNarrationMessage('Trình duyệt chưa hỗ trợ phát thuyết minh.')
+      setNarrationMessage(t('narrationUnsupportedBrowser'))
       return
     }
     window.speechSynthesis.cancel()
     const narration = new SpeechSynthesisUtterance(`${mapSelection.name}. ${mapSelection.description}`)
     narration.lang = 'vi-VN'
     narration.rate = 0.95
-    narration.onstart = () => { setPlaying(true); setNarrationMessage(`Đang thuyết minh: ${mapSelection.name}`) }
-    narration.onend = () => { setPlaying(false); setNarrationMessage('Thuyết minh đã kết thúc.') }
-    narration.onerror = () => { setPlaying(false); setNarrationMessage('Không phát được thuyết minh trên thiết bị này.') }
+    narration.onstart = () => { setPlaying(true); setNarrationMessage(t('narrationPlaying', { name: mapSelection.name })) }
+    narration.onend = () => { setPlaying(false); setNarrationMessage(t('narrationFinished')) }
+    narration.onerror = () => { setPlaying(false); setNarrationMessage(t('narrationError')) }
     window.speechSynthesis.speak(narration)
   }
 
@@ -202,6 +423,7 @@ function App() {
 
   useEffect(() => {
     if (!qrOpen) return
+    const videoElement = qrVideo.current
     let stream: MediaStream | null = null
     let timer: number | null = null
     let scanning = false
@@ -211,50 +433,50 @@ function App() {
 
     async function startScanner() {
       if (!Detector) {
-        setQrMessage('Trình duyệt chưa hỗ trợ đọc QR tự động. Nhập mã POI hoặc chọn địa điểm bên dưới.')
+        setQrMessage(t('qrUnsupported'))
         return
       }
       if (!navigator.mediaDevices?.getUserMedia) {
-        setQrMessage('Không thể mở camera trong trình duyệt này. Nhập mã POI hoặc chọn địa điểm bên dưới.')
+        setQrMessage(t('cameraUnavailable'))
         return
       }
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-        if (!qrVideo.current) return
-        qrVideo.current.srcObject = stream
-        await qrVideo.current.play()
-        setQrMessage('Camera đã sẵn sàng. Hướng mã QR vào giữa khung hình.')
+        if (!videoElement) return
+        videoElement.srcObject = stream
+        await videoElement.play()
+        setQrMessage(t('cameraReady'))
         const detector = new Detector({ formats: ['qr_code'] })
         timer = window.setInterval(async () => {
-          if (scanning || !qrVideo.current || qrVideo.current.readyState < 2) return
+          if (scanning || !videoElement || videoElement.readyState < 2) return
           scanning = true
           try {
-            const codes = await detector.detect(qrVideo.current)
+            const codes = await detector.detect(videoElement)
             const rawValue = codes[0]?.rawValue?.trim()
             if (rawValue) {
               const match = resolveQrPlace(rawValue, poiItems)
               if (match) {
                 handleMapSelect(match)
-                setQrMessage(`Đã nhận diện ${match.name}.`)
+                setQrMessage(t('selectedReady', { name: match.name }))
                 setQrOpen(false)
               } else {
-                setQrMessage(`Chưa khớp mã “${rawValue}” với POI hiện có. Hãy thử mã số hoặc tên địa điểm.`)
+                setQrMessage(`${rawValue}: ${t('qrNotFound')}`)
               }
             }
-          } catch { setQrMessage('Không đọc được hình ảnh từ camera. Hãy thử lại.') }
+          } catch { setQrMessage(t('cameraUnavailable')) }
           scanning = false
         }, 500)
       } catch {
-        setQrMessage('Chưa cấp quyền camera. Bạn vẫn có thể nhập mã POI hoặc chọn địa điểm bên dưới.')
+        setQrMessage(t('cameraPermission'))
       }
     }
     void startScanner()
     return () => {
       if (timer !== null) window.clearInterval(timer)
       stream?.getTracks().forEach((track) => track.stop())
-      if (qrVideo.current) qrVideo.current.srcObject = null
+      if (videoElement) videoElement.srcObject = null
     }
-  }, [handleMapSelect, poiItems, qrOpen])
+  }, [handleMapSelect, poiItems, qrOpen, t])
 
   useEffect(() => {
     const demoError = new URLSearchParams(window.location.search).get('poiState') === 'error'
@@ -278,95 +500,99 @@ function App() {
     }, 500)
   }
 
-  const filteredPlaces = useMemo(() => poiItems.filter((place) => {
+  const filteredPlaces = useMemo(() => sortedPlaces.filter((place) => {
     const matchesCategory = category === 'Tất cả' || place.category === category
     const matchesQuery = `${place.name} ${place.category} ${place.location}`.toLowerCase().includes(query.toLowerCase())
     return matchesCategory && matchesQuery && (activeNav !== 'Đã lưu' || saved.includes(place.id))
-  }), [activeNav, category, poiItems, query, saved])
+  }), [activeNav, category, query, saved, sortedPlaces])
 
   function toggleSaved(id: number) {
     setSaved((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   }
 
+  const navItems: { label: string; key: TranslationKey; icon: string }[] = [
+    { label: 'Khám phá', key: 'discover', icon: 'compass' },
+    { label: 'Bản đồ', key: 'map', icon: 'map' },
+    { label: 'Đã lưu', key: 'saved', icon: 'heart' },
+  ]
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="#home" onClick={() => setActiveNav('Khám phá')} aria-label="SGU Go trang chủ">
+        <a className="brand" href="#home" onClick={() => setActiveNav('Khám phá')} aria-label={t('home')}>
           <span className="brand-mark"><img src={sguBuilding} alt="" /></span>
           <span className="brand-copy"><strong>sgu<span>go</span></strong><small>ĐI MỘT VÒNG, THẤY THÂN QUEN</small></span>
         </a>
-        <div className="side-label">KHÔNG GIAN CỦA BẠN</div>
-        <nav className="main-nav" aria-label="Điều hướng chính">
-          {[
-            { label: 'Khám phá', icon: 'compass' }, { label: 'Bản đồ', icon: 'map' }, { label: 'Đã lưu', icon: 'heart' },
-          ].map((item) => <button key={item.label} className={`nav-item ${activeNav === item.label ? 'active' : ''}`} onClick={() => setActiveNav(item.label)}><Icon name={item.icon} /><span>{item.label}</span>{item.label === 'Đã lưu' && <span className="nav-count">{saved.length}</span>}</button>)}
+        <div className="side-label">{t('navGroup')}</div>
+        <nav className="main-nav" aria-label={t('navigation')}>
+          {navItems.map((item) => <button key={item.label} className={`nav-item ${activeNav === item.label ? 'active' : ''}`} onClick={() => setActiveNav(item.label)}><Icon name={item.icon} /><span>{t(item.key)}</span>{item.label === 'Đã lưu' && <span className="nav-count">{saved.length}</span>}</button>)}
         </nav>
         <div className="side-divider" />
-        <div className="side-label">GỢI Ý CHO BẠN</div>
+        <div className="side-label">{t('suggestions')}</div>
         <button className="route-card" onClick={() => setActiveNav('Khám phá')}>
           <span className="route-icon"><Icon name="sun" size={19} /></span>
-          <span><strong>Một vòng quanh SGU</strong><small>4 điểm · khoảng 25 phút</small></span>
+          <span><strong>{t('route')}</strong><small>{t('routeDuration')}</small></span>
           <Icon name="chevron" size={16} />
         </button>
         <div className="sidebar-bottom">
-          <div className="offline-card"><span className="offline-dot" /><div><strong>Bạn đang trực tuyến</strong><small>Bản đồ luôn sẵn sàng</small></div><Icon name="map" size={17} /></div>
-          <div className="profile-button"><span className="avatar">K</span><span><strong>Khách tham quan</strong><small>Khám phá SGU</small></span></div>
+          <div className="offline-card"><span className="offline-dot" /><div><strong>{t('online')}</strong><small>{t('mapReady')}</small></div><Icon name="map" size={17} /></div>
+          <div className="profile-button"><span className="avatar">G</span><span><strong>{t('guest')}</strong><small>{t('guestMode')}</small></span></div>
         </div>
       </aside>
 
       <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumb"><span>SGU Go</span><Icon name="chevron" size={14} /><strong>{activeNav}</strong></div>
-          <div className="top-actions"><button className="language-button" onClick={() => setLanguage(language === 'VI' ? 'EN' : 'VI')} aria-label="Đổi ngôn ngữ">{language}<span className="language-chevron">⌄</span></button><span className="top-divider" /><button className="help-button">Trợ giúp</button><div className="top-avatar" aria-label="Khách tham quan" title="Khách tham quan">K</div></div>
+          <div className="breadcrumb"><span>SGU Go</span><Icon name="chevron" size={14} /><strong>{t(activeNav === 'Bản đồ' ? 'map' : activeNav === 'Đã lưu' ? 'saved' : 'discover')}</strong></div>
+          <div className="top-actions"><label className="language-select-label"><span className="visually-hidden">{t('language')}</span><select className="language-select" value={language} onChange={(event) => { const selectedLocale = localeOptions.find((option) => option.code === event.target.value); if (selectedLocale) changeLanguage(selectedLocale.code) }} aria-label={t('language')}>{localeOptions.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label><span className="top-divider" /><button className="help-button">{t('help')}</button><div className="top-avatar" aria-label={t('guest')} title={t('guest')}>G</div></div>
         </header>
 
         <div className="page-content">
           {activeNav === 'Bản đồ' ? <section className="map-page">
-            <header className="map-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> KHÔNG GIAN SGU</div><h1>Thuyết minh <em>khuôn viên</em></h1><p>Chọn một địa điểm trên bản đồ để xem thông tin và nghe câu chuyện về nơi đó.</p></div><button className="qr-scan-button" onClick={() => { setQrMessage('Đưa mã QR địa điểm vào khung hình để quét.'); setQrOpen(true) }}>▦ <span>Quét QR</span></button></header>
-            <div className="map-utility-bar"><label>◎ <span>Ngôn ngữ:</span><select value={language} onChange={(event) => { setLanguage(event.target.value); if (event.target.value === 'EN') setNarrationMessage('Bản thuyết minh tiếng Anh chưa có; hiện có Tiếng Việt.') }} aria-label="Ngôn ngữ thuyết minh"><option value="VI">VI · Tiếng Việt</option><option value="EN">EN · English</option></select></label><span className="map-online"><i /> OpenStreetMap</span></div>
-            <div className="campus-map-tabs" role="tablist" aria-label="Chọn cơ sở SGU">{campusMaps.map((campus) => <button key={campus.id} className={`campus-map-tab ${activeCampus === campus.id ? 'is-active' : ''}`} role="tab" aria-selected={activeCampus === campus.id} onClick={() => { setActiveCampus(campus.id); setMapSelection(null); setNarrationMessage('Chọn một địa điểm trong danh sách để nghe thuyết minh.') }}>{campus.label}</button>)}<span className="campus-map-address">{campusMaps.find((campus) => campus.id === activeCampus)?.address}</span></div>
+            <header className="map-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> {t('mapKicker')}</div><h1>{t('mapTitle')}</h1><p>{t('mapDescription')}</p></div><button className="qr-scan-button" onClick={() => { setQrMessage(t('qrStart')); setQrOpen(true) }}>▦ <span>{t('scanQr')}</span></button></header>
+            <div className="map-utility-bar"><span>♫ {t('audioVietnamese')}</span></div>
+            <div className="campus-map-tabs" role="tablist" aria-label={t('campusTabs')}>{campusMaps.map((campus) => <button key={campus.id} className={`campus-map-tab ${activeCampus === campus.id ? 'is-active' : ''}`} role="tab" aria-selected={activeCampus === campus.id} onClick={() => { setActiveCampus(campus.id); setMapSelection(null); setNarrationMessage(t('narrationIdle')) }}>{t(campus.id === 'main' ? 'mainCampus' : campus.id === 'campus-1' ? 'campusOne' : 'campusTwo')}</button>)}<span className="campus-map-address">{campusMaps.find((campus) => campus.id === activeCampus)?.address}</span></div>
             <div className="map-workspace">
-              <section className="hero-map map-screen-canvas" aria-label={`Bản đồ OpenStreetMap ${campusMaps.find((campus) => campus.id === activeCampus)?.label}`}><LeafletMapView key={activeCampus} places={activeCampusPlaces} selectedPlaceId={mapSelection?.id ?? null} onSelectPlace={handleMapSelect} center={campusMaps.find((campus) => campus.id === activeCampus)!.center} /></section>
-              <aside className="map-side-panels" aria-label="Thuyết minh và địa điểm">
-                <section className="map-panel audio-panel"><div className="map-panel-title"><span className="panel-icon">♫</span><h2>Thuyết minh âm thanh</h2></div><div className="narration-status"><span>✓</span><p>{narrationMessage}</p></div><div className="narration-controls"><button className="narration-play" onClick={toggleMapNarration} disabled={!mapSelection} aria-label={playing ? 'Dừng thuyết minh' : 'Phát thuyết minh'}>{playing ? 'Ⅱ' : '▶'}</button><div className="narration-track"><strong>{mapSelection ? mapSelection.name : 'Chưa chọn địa điểm'}</strong><span><i className={playing ? 'track-playing' : ''} /></span></div><small>{language === 'VI' ? 'Tiếng Việt' : 'EN chưa có'}</small></div></section>
-                <section className="map-panel place-panel"><div className="map-panel-title"><span className="panel-icon">⌖</span><h2>{mapSelection ? 'Thông tin địa điểm' : `Địa điểm · ${activeCampusPlaces.length}`}</h2></div>{mapSelection ? <div className="map-selected-place"><span className="map-selected-category">{mapSelection.category}{mapSelection.walk !== '—' ? ` · ${mapSelection.walk} đi bộ` : ''}</span><h3>{mapSelection.name}</h3><p>{mapSelection.description}</p><small><Icon name="pin" size={14} /> {mapSelection.location}</small><div className="map-selected-actions"><button className="map-open-detail" onClick={() => setSelected(mapSelection)}>Xem chi tiết</button><a href={`https://www.google.com/maps/dir/?api=1&destination=${mapSelection.lat},${mapSelection.lng}`} target="_blank" rel="noreferrer">Chỉ đường ↗</a><button className="map-reset-selection" onClick={() => { setMapSelection(null); setNarrationMessage('Chọn một địa điểm trong danh sách để nghe thuyết minh.') }}>Chọn nơi khác</button></div></div> : activeCampusPlaces.length ? <><p className="map-select-hint">Chọn một địa điểm để mở ghim, xem thông tin và nghe thuyết minh.</p><div className="map-place-list">{activeCampusPlaces.map((place, index) => <button className="map-place-row" key={place.id} onClick={() => handleMapSelect(place)}><span className="map-place-number">{index + 1}</span><span className="map-place-copy"><strong>{place.name}</strong><small>{place.category} <i>·</i> {place.location}</small></span><Icon name="chevron" size={17} /></button>)}</div></> : <p className="map-select-hint">Chưa có tọa độ POI cho cơ sở này. Gửi tên địa điểm cùng GPS để thêm ghim.</p>}</section>
-                <p className="map-coordinate-note">Ghim được đặt theo GPS đã xác nhận. Hiện có {activeCampusPlaces.length} địa điểm cho cơ sở này.</p>
+              <section className="hero-map map-screen-canvas" aria-label={`${t('mapTitle')} · ${t(activeCampus === 'main' ? 'mainCampus' : activeCampus === 'campus-1' ? 'campusOne' : 'campusTwo')}`}><LeafletMapView key={activeCampus} places={activeCampusPlaces} selectedPlaceId={mapSelection?.id ?? null} onSelectPlace={handleMapSelect} center={campusMaps.find((campus) => campus.id === activeCampus)!.center} language={language} onLocate={handleUserLocation} /></section>
+              <aside className="map-side-panels" aria-label={`${t('narrationTitle')} · ${t('map')}`}>
+                <section className="map-panel audio-panel"><div className="map-panel-title"><span className="panel-icon">♫</span><h2>{t('narrationTitle')}</h2></div><div className="narration-status"><p>{narrationMessage || t('narrationIdle')}</p></div><div className="narration-controls"><button className="narration-play" onClick={toggleMapNarration} disabled={!mapSelection} aria-label={t(playing ? 'stopNarration' : 'playNarration')}>{playing ? 'Ⅱ' : '▶'}</button><div className="narration-track"><strong>{mapSelection ? mapSelection.name : t('noPlaceSelected')}</strong><span><i className={playing ? 'track-playing' : ''} /></span></div><small>{t('audioVietnamese')}</small></div></section>
+                <section className="map-panel place-panel"><div className="map-panel-title"><span className="panel-icon">⌖</span><h2>{mapSelection ? t('placeInfo') : t('placeCount', { count: activeCampusPlaces.length })}</h2></div>{mapSelection ? <div className="map-selected-place"><span className="map-selected-category">{t(categoryTranslationKeys[mapSelection.category])}{mapSelection.walk !== '—' ? ` · ${mapSelection.walk}` : ''}</span><h3>{mapSelection.name}</h3><p>{mapSelection.description}</p><small><Icon name="pin" size={14} /> {mapSelection.location}</small><div className="map-selected-actions"><button className="map-open-detail" onClick={() => setSelected(mapSelection)}>{t('details')}</button><a href={`https://www.google.com/maps/dir/?api=1&destination=${mapSelection.lat},${mapSelection.lng}`} target="_blank" rel="noreferrer">{t('directions')}</a><button className="map-reset-selection" onClick={() => { setMapSelection(null); setNarrationMessage(t('narrationIdle')) }}>{t('otherPlace')}</button></div></div> : activeCampusPlaces.length ? <><p className="map-select-hint">{t('selectPlace')}</p><div className="map-place-list">{activeCampusNearbyPlaces.map((place, index) => <button className="map-place-row" key={place.id} onClick={() => handleMapSelect(place)}><span className="map-place-number">{index + 1}</span><span className="map-place-copy"><strong>{place.name}</strong><small>{t(categoryTranslationKeys[place.category])} <i>·</i> {place.location}</small></span><Icon name="chevron" size={17} /></button>)}</div></> : <p className="map-select-hint">{t('noCoordinates')}</p>}</section>
+                <p className="map-coordinate-note">{t('coordinateNote', { count: activeCampusPlaces.length })}</p>
               </aside>
             </div>
           </section> : <>
             <section className="welcome-row">
-              <div><div className="eyebrow"><span className="eyebrow-line" /> THỨ BẠN TÌM ĐANG Ở GẦN ĐÂY</div><h1>Mỗi góc nhỏ,<br /><em>một câu chuyện.</em></h1><p className="welcome-copy">Dạo một vòng quanh Đại học Sài Gòn — khám phá những nơi thân quen theo cách mới.</p></div>
-              <div className="today-note"><span className="weather-icon"><Icon name="sun" size={24} /></span><div><strong>Một ngày đẹp để đi bộ</strong><small>Quận 5 · TP. Hồ Chí Minh</small></div></div>
+              <div><div className="eyebrow"><span className="eyebrow-line" /> {t('homeEyebrow')}</div><h1>{t('homeTitleFirst')}<br /><em>{t('homeTitleSecond')}</em></h1><p className="welcome-copy">{t('homeCopy')}</p></div>
+              <div className="today-note"><span className="weather-icon"><Icon name="sun" size={24} /></span><div><strong>{t('today')}</strong><small>{t('district')}</small></div></div>
             </section>
 
-            <section className="hero-map" aria-label="Bản đồ minh họa khám phá quanh SGU">
+            <section className="hero-map" aria-label={t('homeMapAria')}>
               <div className="map-texture" /><div className="map-road road-one" /><div className="map-road road-two" /><div className="map-road road-three" />
               <span className="map-label map-label-one">AN DƯƠNG VƯƠNG</span><span className="map-label map-label-two">NGUYỄN TRÃI</span><span className="map-label map-label-three">KHUÔN VIÊN SGU</span>
               <div className="map-building building-one" /><div className="map-building building-two" /><div className="map-building building-three" /><div className="map-park"><span>🌿</span></div>
               <div className="map-pin pin-a"><span>1</span><i /></div><div className="map-pin pin-b"><span>2</span><i /></div><div className="map-pin pin-c"><span>3</span><i /></div>
-              <div className="map-you"><span /><small>Vị trí mẫu</small></div>
-              <div className="map-overlay-card"><span className="mini-map-icon"><Icon name="map" size={19} /></span><div><strong>Khám phá quanh bạn</strong><small>4 địa điểm mẫu · 500 m</small></div><button onClick={() => setActiveNav('Bản đồ')} aria-label="Mở bản đồ"><Icon name="arrow" size={18} /></button></div>
-              <button className="map-expand" onClick={() => setActiveNav('Bản đồ')} aria-label="Xem bản đồ lớn"><Icon name="map" size={18} /></button>
+              <div className="map-you"><span /><small>{t('guest')}</small></div>
+              <div className="map-overlay-card"><span className="mini-map-icon"><Icon name="map" size={19} /></span><div><strong>{t('nearby')}</strong><small>{t('samplePlaces')}</small></div><button onClick={() => setActiveNav('Bản đồ')} aria-label={t('openMap')}><Icon name="arrow" size={18} /></button></div>
+              <button className="map-expand" onClick={() => setActiveNav('Bản đồ')} aria-label={t('expandMap')}><Icon name="map" size={18} /></button>
             </section>
 
             <section className="places-section">
-              <div className="section-heading"><div><div className="section-kicker">ĐIỂM ĐẾN GẦN BẠN</div><h2>{activeNav === 'Đã lưu' ? 'Nơi bạn muốn ghé lại' : 'Đi đâu một chút?'}</h2><p>{activeNav === 'Đã lưu' ? `${filteredPlaces.length} địa điểm đã lưu cho lần ghé thăm tiếp theo` : 'Những điểm thú vị chỉ cách bạn vài bước chân.'}</p></div><button className="view-all" onClick={() => setActiveNav('Bản đồ')}>Xem bản đồ <Icon name="arrow" size={16} /></button></div>
-              <div className="toolbar"><div className="category-list" role="group" aria-label="Lọc theo danh mục">{categories.map((item) => <button key={item} className={`category-chip ${category === item ? 'selected' : ''}`} onClick={() => setCategory(item)}>{item === 'Tất cả' && <span className="chip-dot" />}{item}</button>)}</div><div className="filter-actions"><label className="search-box"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm địa điểm..." aria-label="Tìm địa điểm" />{query && <button aria-label="Xóa tìm kiếm" onClick={() => setQuery('')}><Icon name="close" size={15} /></button>}</label><button className="filter-button" aria-label="Bộ lọc"><Icon name="sliders" size={17} /></button></div></div>
+              <div className="section-heading"><div><div className="section-kicker">{t('nearbyHeading')}</div><h2>{activeNav === 'Đã lưu' ? t('savedHeading') : t('discoveryHeading')}</h2><p>{activeNav === 'Đã lưu' ? t('savedCount', { count: filteredPlaces.length }) : userPosition ? t('distanceMode') : t('nearbyCopy')}</p></div><button className="view-all" onClick={() => setActiveNav('Bản đồ')}>{t('viewMap')} <Icon name="arrow" size={16} /></button></div>
+              <div className="toolbar"><div className="category-list" role="group" aria-label={t('filterCategories')}>{categories.map((item) => <button key={item} className={`category-chip ${category === item ? 'selected' : ''}`} onClick={() => setCategory(item)}>{item === 'Tất cả' && <span className="chip-dot" />}{t(categoryTranslationKeys[item])}</button>)}</div><div className="filter-actions"><label className="search-box"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('search')} aria-label={t('search')} />{query && <button aria-label={t('clearSearch')} onClick={() => setQuery('')}><Icon name="close" size={15} /></button>}</label><button className="filter-button" aria-label={t('filterCategories')}><Icon name="sliders" size={17} /></button></div></div>
 
-              {poiStatus === 'loading' ? <div className="poi-grid" aria-label="Đang tải địa điểm" aria-busy="true">{[1, 2, 3, 4].map((item) => <article className="poi-skeleton" key={item}><div className="skeleton-image" /><div className="skeleton-body"><i className="skeleton-line short" /><i className="skeleton-line title" /><i className="skeleton-line" /><i className="skeleton-line medium" /><div className="skeleton-footer"><i /><i /></div></div></article>)}</div> : poiStatus === 'error' ? <div className="error-state" role="alert"><span className="error-icon"><Icon name="map" size={22} /></span><div className="error-copy"><strong>Chưa tải được địa điểm</strong><p>Đã có sự cố khi tải danh sách. Bạn thử lại sau một chút nhé.</p></div><button className="retry-button" onClick={retryLoadPlaces}><Icon name="arrow" size={15} /> Thử lại</button></div> : filteredPlaces.length > 0 ? <div className="poi-grid">{filteredPlaces.map((place) => <article className="poi-card" key={place.id}>
-                <button className="poi-image-button" onClick={() => setSelected(place)} aria-label={`Xem ${place.name}`}><img className="poi-image" src={place.image} alt="" /><span className="image-tag">{place.tag}</span></button>
-                <button className={`save-button ${saved.includes(place.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(place.id)} aria-label={saved.includes(place.id) ? 'Bỏ lưu địa điểm' : 'Lưu địa điểm'}><Icon name="heart" size={18} /></button>
-                <div className="poi-info"><div className="poi-meta"><span>{place.category}</span>{place.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {place.rating}</span>}</div><button className="poi-title" onClick={() => setSelected(place)}>{place.name}</button><p className="poi-description">{place.description}</p><div className="poi-footer"><span><Icon name="pin" size={14} /> {place.distance}</span>{place.walk !== '—' && <><span className="footer-separator" /><span><Icon name="clock" size={14} /> {place.walk} đi bộ</span></>}<button onClick={() => setSelected(place)} aria-label={`Chi tiết ${place.name}`}><Icon name="arrow" size={16} /></button></div></div>
-              </article>)}</div> : <div className="empty-state"><span className="empty-icon"><Icon name={activeNav === 'Đã lưu' ? 'heart' : 'search'} size={24} /></span><strong>{activeNav === 'Đã lưu' ? 'Chưa có địa điểm nào được lưu' : 'Chưa tìm thấy địa điểm phù hợp'}</strong><p>{activeNav === 'Đã lưu' ? 'Chạm biểu tượng trái tim trên một địa điểm để lưu lại nhé.' : 'Thử một từ khóa khác hoặc chọn danh mục “Tất cả”.'}</p></div>}
+              {poiStatus === 'loading' ? <div className="poi-grid" aria-label={t('placesLoading')} aria-busy="true">{[1, 2, 3, 4].map((item) => <article className="poi-skeleton" key={item}><div className="skeleton-image" /><div className="skeleton-body"><i className="skeleton-line short" /><i className="skeleton-line title" /><i className="skeleton-line" /><i className="skeleton-line medium" /><div className="skeleton-footer"><i /><i /></div></div></article>)}</div> : poiStatus === 'error' ? <div className="error-state" role="alert"><span className="error-icon"><Icon name="map" size={22} /></span><div className="error-copy"><strong>{t('loadError')}</strong><p>{t('loadErrorCopy')}</p></div><button className="retry-button" onClick={retryLoadPlaces}><Icon name="arrow" size={15} /> {t('retry')}</button></div> : filteredPlaces.length > 0 ? <div className="poi-grid">{filteredPlaces.map((place) => <article className="poi-card" key={place.id}>
+                <button className="poi-image-button" onClick={() => setSelected(place)} aria-label={t('placeDetails', { name: place.name })}><img className="poi-image" src={place.image} alt="" /><span className="image-tag">{place.tag}</span></button>
+                <button className={`save-button ${saved.includes(place.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(place.id)} aria-label={saved.includes(place.id) ? t('removeSaved') : t('savePlace')}><Icon name="heart" size={18} /></button>
+                <div className="poi-info"><div className="poi-meta"><span>{t(categoryTranslationKeys[place.category])}</span>{place.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {place.rating}</span>}</div><button className="poi-title" onClick={() => setSelected(place)}>{place.name}</button><p className="poi-description">{place.description}</p><div className="poi-footer"><span><Icon name="pin" size={14} /> {displayDistance(place)}</span>{place.walk !== '—' && <><span className="footer-separator" /><span><Icon name="clock" size={14} /> {place.walk} đi bộ</span></>}<button onClick={() => setSelected(place)} aria-label={t('placeDetails', { name: place.name })}><Icon name="arrow" size={16} /></button></div></div>
+              </article>)}</div> : <div className="empty-state"><span className="empty-icon"><Icon name={activeNav === 'Đã lưu' ? 'heart' : 'search'} size={24} /></span><strong>{activeNav === 'Đã lưu' ? t('noSaved') : t('noMatches')}</strong><p>{activeNav === 'Đã lưu' ? t('noSavedCopy') : t('noMatchesCopy')}</p></div>}
             </section>
           </>}
-          <footer className="page-footer"><span>SGU Go <span className="footer-bullet">·</span> Một vòng quanh ngôi trường thân quen</span><span>Được làm bằng <span className="footer-heart">♥</span> tại SGU</span></footer>
+          <footer className="page-footer"><span>SGU Go <span className="footer-bullet">·</span> {t('footer')}</span><span>{t('madeAtSgu')}</span></footer>
         </div>
       </main>
 
-      {qrOpen && <div className="modal-backdrop" role="presentation" onClick={() => setQrOpen(false)}><section className="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setQrOpen(false)} aria-label="Đóng"><Icon name="close" /></button><div className="qr-modal-heading"><span className="qr-modal-icon">▦</span><div><h2 id="qr-title">Quét mã QR địa điểm</h2><p>Cho phép camera để nhận diện mã QR của POI.</p></div></div><video className="qr-video" ref={qrVideo} muted playsInline /><p className="qr-message" role="status">{qrMessage}</p><form className="qr-manual-form" onSubmit={(event) => { event.preventDefault(); const match = resolveQrPlace(qrCode, poiItems); if (match) { handleMapSelect(match); setQrOpen(false); setQrCode('') } else setQrMessage('Chưa tìm thấy POI. Nhập số địa điểm, tên địa điểm, hoặc chọn bên dưới.') }}><input value={qrCode} onChange={(event) => setQrCode(event.target.value)} placeholder="Nhập mã POI hoặc tên địa điểm" aria-label="Mã QR POI" /><button type="submit">Tìm địa điểm</button></form><div className="qr-place-options">{poiItems.map((place) => <button key={place.id} onClick={() => { handleMapSelect(place); setQrOpen(false) }}>{place.name}</button>)}</div></section></div>}
+      {qrOpen && <div className="modal-backdrop" role="presentation" onClick={() => setQrOpen(false)}><section className="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setQrOpen(false)} aria-label={t('close')}><Icon name="close" /></button><div className="qr-modal-heading"><span className="qr-modal-icon">▦</span><div><h2 id="qr-title">{t('qrTitle')}</h2><p>{t('qrDescription')}</p></div></div><video className="qr-video" ref={qrVideo} muted playsInline /><p className="qr-message" role="status">{qrMessage}</p><form className="qr-manual-form" onSubmit={(event) => { event.preventDefault(); const match = resolveQrPlace(qrCode, poiItems); if (match) { handleMapSelect(match); setQrOpen(false); setQrCode('') } else setQrMessage(t('qrNotFound')) }}><input value={qrCode} onChange={(event) => setQrCode(event.target.value)} placeholder={t('qrInput')} aria-label={t('qrInput')} /><button type="submit">{t('findPlace')}</button></form><div className="qr-place-options">{poiItems.map((place) => <button key={place.id} onClick={() => { handleMapSelect(place); setQrOpen(false) }}>{place.name}</button>)}</div></section></div>}
 
-      {selected && <div className="modal-backdrop" role="presentation" onClick={() => setSelected(null)}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setSelected(null)} aria-label="Đóng"><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" /><span className="image-tag">{selected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{selected.category}</span><span className="rating"><Icon name="star" size={13} /> {selected.rating}</span></div><h2 id="detail-title">{selected.name}</h2><p>{selected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {selected.location}<span>·</span>{selected.distance}</div><div className="audio-guide"><button className={`audio-play ${playing ? 'playing' : ''}`} onClick={() => setPlaying(!playing)}><Icon name={playing ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing ? 'Đang phát thuyết minh' : 'Nghe câu chuyện nơi này'}</strong><small>Thuyết minh tiếng Việt · 1:24</small></div><div className={`audio-wave ${playing ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => { setSelected(null); setActiveNav('Bản đồ') }}><Icon name="map" size={18} /> Chỉ đường đến đây</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? 'Đã lưu' : 'Lưu địa điểm'}</button></div></div></section></div>}
+      {selected && <div className="modal-backdrop" role="presentation" onClick={() => setSelected(null)}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setSelected(null)} aria-label={t('close')}><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" /><span className="image-tag">{selected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{t(categoryTranslationKeys[selected.category])}</span><span className="rating"><Icon name="star" size={13} /> {selected.rating}</span></div><h2 id="detail-title">{selected.name}</h2><p>{selected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {selected.location}<span>·</span>{displayDistance(selected)}</div><div className="audio-guide"><button className={`audio-play ${playing ? 'playing' : ''}`} onClick={() => setPlaying(!playing)} aria-label={t(playing ? 'stopNarration' : 'playNarration')}><Icon name={playing ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing ? t('narrationPlaying', { name: selected.name }) : t('narrationTitle')}</strong><small>{t('audioVietnamese')}</small></div><div className={`audio-wave ${playing ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => { setSelected(null); setActiveNav('Bản đồ') }}><Icon name="map" size={18} /> {t('directions')}</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? t('removeSaved') : t('savePlace')}</button></div></div></section></div>}
 
     </div>
   )

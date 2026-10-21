@@ -44,6 +44,9 @@ button { color: inherit; }
 .language-button, .help-button { background: transparent; border: 0; color: #58675e; font-size: 11px; cursor: pointer; }
 .language-button { font-weight: 700; }
 .language-chevron { color: #98a39a; margin-left: 5px; font-size: 14px; }
+.language-select-label { display: inline-flex; align-items: center; }
+.language-select { max-width: 132px; border: 1px solid #e1e8df; border-radius: 7px; padding: 6px 8px; color: #426b4b; background: #fff; font-size: 10px; font-weight: 700; cursor: pointer; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .top-divider { height: 17px; width: 1px; background: #e5e9e4; }
 .help-button { padding: 5px 0; }
 .top-avatar { width: 29px; height: 29px; font-size: 11px; border: 1px solid #d7e2d8; }
@@ -156,12 +159,18 @@ h1, h2, p { margin: 0; }
 .leaflet-map-placeholder strong { color: #354c3c; font: 700 15px/1.35 'Manrope',sans-serif; }
 .leaflet-map-placeholder p { max-width: 380px; color: #75867a; font-size: 10px; line-height: 1.6; }
 .leaflet-map-placeholder button { border: 1px solid #dce8da; border-radius: 7px; padding: 8px 12px; color: #41664c; background: #fff; cursor: pointer; }
-.leaflet-map-locate { position: absolute; z-index: 500; top: 13px; right: 13px; display: inline-flex; align-items: center; gap: 7px; height: 35px; padding: 0 11px; border: 1px solid #e1e8df; border-radius: 8px; color: #426b4b; background: white; box-shadow: 0 2px 8px #263b2d1a; font-size: 10px; font-weight: 700; cursor: pointer; }
-.leaflet-map-locate:hover { background: #f5f8f4; }
+.leaflet-map-locate { position: absolute; z-index: 500; top: 13px; right: 13px; display: inline-flex; align-items: center; gap: 7px; height: 35px; padding: 0 11px; border: 1px solid #17528a; border-radius: 8px; color: #fff; background: #2169ad; box-shadow: 0 3px 10px #174e8a55; font-size: 10px; font-weight: 700; cursor: pointer; }
+.leaflet-map-locate:hover { border-color: #103f6e; background: #185991; }
 .leaflet-map-message { position: absolute; z-index: 500; right: 12px; bottom: 28px; max-width: min(340px,calc(100% - 24px)); padding: 9px 11px; border: 1px solid #e8ddd0; border-radius: 8px; color: #765c42; background: #fffaf4; box-shadow: 0 3px 12px #263b2d17; font-size: 9px; }
 .leaflet-poi-icon { border: 0 !important; background: transparent !important; }
 .leaflet-poi-icon span { display: grid; place-items: center; width: 36px; height: 36px; border: 3px solid #fff; border-radius: 50% 50% 50% 5px; color: #fff; background: #397de0; box-shadow: 0 2px 8px #1d3a2850; font: 800 12px/1 'Manrope',sans-serif; transform: rotate(-45deg); }
-.leaflet-poi-icon span b { font: inherit; transform: rotate(45deg); }
+.leaflet-poi-icon--architecture span { background: #2563a8; }
+.leaflet-poi-icon--study span { background: #7042a6; }
+.leaflet-poi-icon--food span { background: #c45a18; }
+.leaflet-poi-icon--green span { background: #28734d; }
+.leaflet-poi-icon--sports span { background: #bd4b25; }
+.leaflet-poi-icon span b { display: grid; place-items: center; width: 100%; height: 100%; font: inherit; transform: rotate(45deg); }
+.leaflet-poi-icon span b svg { display: block; width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .leaflet-map-info { display: grid; gap: 6px; min-width: 180px; padding: 3px 2px; color: #405346; font-family: Arial,sans-serif; }
 .leaflet-map-info strong { font-size: 13px; }
 .leaflet-map-info span { color: #78867c; font-size: 11px; }
@@ -188,8 +197,7 @@ h1, h2, p { margin: 0; }
 .map-panel-title { display: flex; align-items: center; gap: 9px; padding-bottom: 12px; border-bottom: 1px solid #e8edf2; }
 .map-panel-title h2 { color: #314253; font: 700 14px/1.3 'Manrope',sans-serif; }
 .panel-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: #397b9c; background: #edf6fa; font-size: 17px; }
-.narration-status { display: flex; align-items: flex-start; gap: 8px; margin-top: 11px; padding: 10px; border: 1px solid #e1eaf0; border-radius: 9px; color: #50677b; background: #f8fafc; font-size: 10px; line-height: 1.55; }
-.narration-status > span { display: grid; place-items: center; width: 16px; height: 16px; flex: 0 0 auto; border-radius: 4px; color: #fff; background: #40b993; font-size: 10px; }
+.narration-status { display: flex; align-items: flex-start; margin-top: 11px; padding: 10px; border: 1px solid #e1eaf0; border-radius: 9px; color: #50677b; background: #f8fafc; font-size: 10px; line-height: 1.55; }
 .narration-controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 9px 11px; border-radius: 24px; background: #f1f3f4; }
 .narration-play { display: grid; place-items: center; width: 29px; height: 29px; flex: 0 0 auto; border: 0; border-radius: 50%; color: #fff; background: #397b9c; font-size: 11px; cursor: pointer; }
 .narration-play:disabled { color: #9ca4a8; background: #e0e4e6; cursor: not-allowed; }

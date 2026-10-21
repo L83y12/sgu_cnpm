@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { translate, type Locale, type TranslationKey } from '../../i18n/translations'
 
 export type MapPoi = {
   id: number
@@ -13,6 +14,7 @@ type LatLng = readonly [number, number]
 type LeafletMarker = {
   addTo: (map: LeafletMap) => LeafletMarker
   bindPopup: (content: HTMLElement | string) => LeafletMarker
+  setPopupContent: (content: HTMLElement | string) => LeafletMarker
   openPopup: () => LeafletMarker
   on: (event: 'click', listener: () => void) => LeafletMarker
 }
@@ -31,6 +33,23 @@ type LeafletApi = {
   control: { scale: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void } }
 }
 
+const markerIcons: Record<string, string> = {
+  'Kiến trúc': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M9 9h.01M15 9h.01"/></svg>',
+  'Học tập': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3H12v17H5.5A2.5 2.5 0 0 0 3 22V5.5ZM21 5.5A2.5 2.5 0 0 0 18.5 3H12v17h6.5a2.5 2.5 0 0 1 2.5 2V5.5Z"/></svg>',
+  'Ẩm thực': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2v7m-3-7v4a3 3 0 0 0 6 0V2m-3 7v13m9-20v20m0-20c3 2 4 5 4 8h-4"/></svg>',
+  'Không gian xanh': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-8m0 0c-6 0-9-4-9-9 5 0 9 3 9 9Zm0-4c0-6 3-10 9-11 0 6-3 10-9 11Z"/></svg>',
+  'Thể thao': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 3 3.5 5.5-2 6.5h-6L5 9m10.5-.5L21 9m-7.5 6 4 5m-6-5-5 5"/></svg>',
+  default: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>',
+}
+
+const markerClasses: Record<string, string> = {
+  'Kiến trúc': 'architecture',
+  'Học tập': 'study',
+  'Ẩm thực': 'food',
+  'Không gian xanh': 'green',
+  'Thể thao': 'sports',
+}
+
 declare global {
   interface Window { L?: LeafletApi }
 }
@@ -41,7 +60,7 @@ function loadLeaflet(): Promise<LeafletApi> {
   if (window.L) return Promise.resolve(window.L)
   if (leafletLoader) return leafletLoader
 
-  leafletLoader = new Promise((resolve, reject) => {
+  const loading = new Promise<LeafletApi>((resolve, reject) => {
     if (!document.querySelector('link[data-leaflet-css]')) {
       const stylesheet = document.createElement('link')
       stylesheet.rel = 'stylesheet'
@@ -68,40 +87,59 @@ function loadLeaflet(): Promise<LeafletApi> {
     leafletLoader = null
     throw error
   })
-  return leafletLoader
+  leafletLoader = loading
+  return loading
 }
 
-function makeInfoContent(place: MapPoi) {
+const categoryTranslationKeys: Record<string, TranslationKey> = {
+  'Kiến trúc': 'architecture',
+  'Học tập': 'study',
+  'Ẩm thực': 'food',
+  'Không gian xanh': 'green',
+  'Thể thao': 'sports',
+}
+
+function makeInfoContent(place: MapPoi, language: Locale) {
   const content = document.createElement('div')
   content.className = 'leaflet-map-info'
   const title = document.createElement('strong')
   title.textContent = place.name
   const category = document.createElement('span')
-  category.textContent = `${place.category} · ${place.location}`
+  category.textContent = `${translate(language, categoryTranslationKeys[place.category] ?? 'category')} · ${place.location}`
   const directions = document.createElement('a')
   directions.href = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`
   directions.target = '_blank'
   directions.rel = 'noreferrer'
-  directions.textContent = 'Chỉ đường ↗'
+  directions.textContent = translate(language, 'directions')
   content.append(title, category, directions)
   return content
 }
 
-export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center }: {
+export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center, language, onLocate }: {
   places: readonly MapPoi[]
   selectedPlaceId: number | null
   onSelectPlace: (place: MapPoi) => void
   center: LatLng
+  language: Locale
+  onLocate: (position: { lat: number; lng: number }) => void
 }) {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<LeafletMap | null>(null)
   const markers = useRef(new Map<number, LeafletMarker>())
+  const languageRef = useRef(language)
+  const onSelectPlaceRef = useRef(onSelectPlace)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [message, setMessage] = useState('')
 
   useEffect(() => {
+    languageRef.current = language
+    onSelectPlaceRef.current = onSelectPlace
+  }, [language, onSelectPlace])
+
+  useEffect(() => {
     let cancelled = false
     let activeMap: LeafletMap | null = null
+    const activeMarkers = markers.current
     void loadLeaflet().then((L) => {
       if (cancelled || !mapElement.current) return
       const map = L.map(mapElement.current, { scrollWheelZoom: true }).setView(center, 18)
@@ -113,34 +151,42 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center 
       }).addTo(map)
       L.control.scale({ imperial: false }).addTo(map)
 
-      places.forEach((place, index) => {
+      places.forEach((place) => {
+        const markerClass = markerClasses[place.category] ?? 'default'
         const icon = L.divIcon({
-          className: 'leaflet-poi-icon',
-          html: `<span><b>${index + 1}</b></span>`,
+          className: `leaflet-poi-icon leaflet-poi-icon--${markerClass}`,
+          html: `<span><b>${markerIcons[place.category] ?? markerIcons.default}</b></span>`,
           iconSize: [38, 44],
           iconAnchor: [19, 42],
           popupAnchor: [0, -38],
         })
         const marker = L.marker([place.lat, place.lng], { title: place.name, icon })
           .addTo(map)
-          .bindPopup(makeInfoContent(place))
-          .on('click', () => onSelectPlace(place))
-        markers.current.set(place.id, marker)
+          .bindPopup(makeInfoContent(place, languageRef.current))
+          .on('click', () => onSelectPlaceRef.current(place))
+        activeMarkers.set(place.id, marker)
       })
       setStatus('ready')
-    }).catch((error: unknown) => {
+    }).catch(() => {
       if (cancelled) return
-      setMessage(error instanceof Error ? error.message : 'Không tải được bản đồ.')
+      setMessage(translate(languageRef.current, 'mapLoadError'))
       setStatus('error')
     })
 
     return () => {
       cancelled = true
       if (mapInstance.current === activeMap) mapInstance.current = null
-      markers.current.clear()
+      activeMarkers.clear()
       activeMap?.remove()
     }
-  }, [center, onSelectPlace, places])
+  }, [center, places])
+
+  useEffect(() => {
+    if (status !== 'ready') return
+    places.forEach((place) => {
+      markers.current.get(place.id)?.setPopupContent(makeInfoContent(place, language))
+    })
+  }, [language, places, status])
 
   useEffect(() => {
     if (!selectedPlaceId || !mapInstance.current) return
@@ -152,39 +198,40 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center 
 
   function locateMe() {
     if (!navigator.geolocation) {
-      setMessage('Trình duyệt này không hỗ trợ định vị.')
+      setMessage(translate(language, 'geoUnsupported'))
       return
     }
     navigator.geolocation.getCurrentPosition((position) => {
       const map = mapInstance.current
       if (!map || !window.L) return
       const currentPosition: LatLng = [position.coords.latitude, position.coords.longitude]
+      onLocate({ lat: position.coords.latitude, lng: position.coords.longitude })
       window.L.circleMarker(currentPosition, {
         radius: 8,
         color: '#fff',
         weight: 4,
         fillColor: '#4285f4',
         fillOpacity: 1,
-      }).addTo(map).bindPopup('Vị trí hiện tại của bạn').openPopup()
+      }).addTo(map).bindPopup(translate(language, 'currentLocation')).openPopup()
       map.panTo(currentPosition)
       map.setZoom(18)
       setMessage('')
     }, (error) => {
       setMessage(error.code === error.PERMISSION_DENIED
-        ? 'Bạn chưa cấp quyền truy cập vị trí cho trình duyệt.'
-        : 'Không lấy được vị trí hiện tại. Hãy thử lại hoặc kiểm tra cài đặt vị trí.')
+        ? translate(language, 'geoPermission')
+        : translate(language, 'geoError'))
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 })
   }
 
   return <div className="leaflet-map-shell">
-    <div className="leaflet-map-canvas" ref={mapElement} aria-label="Bản đồ OpenStreetMap khuôn viên SGU" />
+    <div className="leaflet-map-canvas" ref={mapElement} aria-label={translate(language, 'mapTitle')} />
     {status !== 'ready' && <div className="leaflet-map-placeholder" role={status === 'error' ? 'alert' : 'status'}>
       <span className="leaflet-map-placeholder-icon">{status === 'loading' ? '…' : '◎'}</span>
-      <strong>{status === 'loading' ? 'Đang tải bản đồ thật…' : 'Chưa tải được bản đồ'}</strong>
+      <strong>{status === 'loading' ? translate(language, 'placesLoading') : translate(language, 'loadError')}</strong>
       {status === 'error' && <p>{message}</p>}
-      {status === 'error' && <button onClick={() => window.location.reload()}>Tải lại trang</button>}
+      {status === 'error' && <button onClick={() => window.location.reload()}>{translate(language, 'retry')}</button>}
     </div>}
-    <button className="leaflet-map-locate" onClick={locateMe} aria-label="Dùng vị trí hiện tại">⌖ <span>Vị trí của tôi</span></button>
+    <button className="leaflet-map-locate" onClick={locateMe} aria-label={translate(language, 'locateMeAria')}>⌖ <span>{translate(language, 'locateMe')}</span></button>
     {message && status === 'ready' && <div className="leaflet-map-message" role="status">{message}</div>}
   </div>
 }
