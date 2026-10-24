@@ -9,6 +9,9 @@ export type AdminPoi = {
   narration?: string
   location: string
   campusId?: string
+  lat?: number
+  lng?: number
+  image?: string
 }
 
 type Props = { places: AdminPoi[] }
@@ -26,6 +29,7 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
   const [filter, setFilter] = useState('Tất cả địa điểm')
   const [showForm, setShowForm] = useState(false)
   const [notice, setNotice] = useState('')
+  const [imagePreview, setImagePreview] = useState('')
 
   useEffect(() => setPlaces(initialPlaces), [initialPlaces])
 
@@ -37,9 +41,24 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
   const narratedCount = places.filter((place) => Boolean(place.narration?.trim())).length
   const categories = [...new Set(places.map((place) => place.category))]
 
-  function addPlace(event: FormEvent<HTMLFormElement>) {
+  async function addPlace(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const imageFile = form.get('image')
+    if (!(imageFile instanceof File) || imageFile.size === 0) {
+      setNotice('Vui lòng chọn ảnh cho địa điểm.')
+      return
+    }
+    const image = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Không đọc được ảnh.'))
+      reader.onerror = () => reject(new Error('Không đọc được ảnh.'))
+      reader.readAsDataURL(imageFile)
+    }).catch(() => '')
+    if (!image) {
+      setNotice('Không thể tải ảnh. Vui lòng chọn lại tệp ảnh.')
+      return
+    }
     const nextId = Math.max(0, ...places.map((place) => place.id)) + 1
     const place: AdminPoi = {
       id: nextId,
@@ -47,10 +66,15 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
       category: String(form.get('category') ?? 'Kiến trúc'),
       location: String(form.get('location') ?? '').trim(),
       description: String(form.get('description') ?? '').trim(),
+      lat: Number(form.get('lat')),
+      lng: Number(form.get('lng')),
+      image,
+      campusId: 'main',
     }
     setPlaces((current) => [place, ...current])
     setStatuses((current) => ({ ...current, [nextId]: 'Bản nháp' }))
     setShowForm(false)
+    setImagePreview('')
     setNotice('Đã thêm địa điểm vào danh sách bản nháp.')
     window.setTimeout(() => setNotice(''), 3500)
   }
@@ -104,14 +128,15 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
     <section className="admin-panel admin-table-panel">
       <div className="admin-table-heading"><div><h2>Quản lý địa điểm</h2><p>Tra cứu và cập nhật trạng thái hiển thị của POI.</p></div><button className="admin-export-button" onClick={exportCsv}>↓ <span>Xuất CSV</span></button></div>
       <div className="admin-table-tools"><label className="admin-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm địa điểm, danh mục..." aria-label="Tìm địa điểm" /></label><select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Lọc theo trạng thái"><option>Tất cả địa điểm</option><option>Đang hiển thị</option><option>Bản nháp</option></select></div>
-      <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>ĐỊA ĐIỂM</th><th>DANH MỤC</th><th>VỊ TRÍ</th><th>AUDIO</th><th>TRẠNG THÁI</th><th /></tr></thead><tbody>
+      <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>ĐỊA ĐIỂM</th><th>DANH MỤC</th><th>VỊ TRÍ</th><th>TỌA ĐỘ</th><th>AUDIO</th><th>TRẠNG THÁI</th><th /></tr></thead><tbody>
         {visiblePlaces.slice(0, 8).map((place) => {
           const status = statuses[place.id] ?? 'Đang hiển thị'
           return (
             <tr key={place.id}>
-              <td><div className="admin-place-cell"><span className="admin-place-thumbnail">⌖</span><span><strong>{place.name}</strong><small>POI-{String(place.id).padStart(3, '0')}</small></span></div></td>
+              <td><div className="admin-place-cell"><span className="admin-place-thumbnail">{place.image ? <img src={place.image} alt={`Ảnh ${place.name}`} /> : '⌖'}</span><span><strong>{place.name}</strong><small>POI-{String(place.id).padStart(3, '0')}</small></span></div></td>
               <td><span className="admin-category-pill"><i style={{ background: categoryColors[place.category] ?? '#6c8475' }} />{place.category}</span></td>
               <td className="admin-location-cell">{place.location}</td>
+              <td>{typeof place.lat === 'number' && typeof place.lng === 'number' ? `${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}` : '—'}</td>
               <td><span className={`admin-audio-state ${place.narration ? 'has-audio' : ''}`}>{place.narration ? '♫ Có audio' : '— Chưa có'}</span></td>
               <td><span className={`admin-status-pill ${status === 'Bản nháp' ? 'draft' : ''}`}><i />{status}</span></td>
               <td><button className="admin-row-action" title={status === 'Bản nháp' ? 'Đăng địa điểm' : 'Chuyển thành bản nháp'} onClick={() => setStatuses((current) => ({ ...current, [place.id]: status === 'Bản nháp' ? 'Đang hiển thị' : 'Bản nháp' }))}>{status === 'Bản nháp' ? 'Đăng' : '•••'}</button></td>
@@ -124,6 +149,6 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
       {visiblePlaces.length > 8 && <div className="admin-table-footer">Đang hiển thị 8 trên {visiblePlaces.length} địa điểm <span>Danh sách đầy đủ sẽ được phân trang khi kết nối dữ liệu.</span></div>}
     </section>
 
-    {showForm && <div className="admin-modal-backdrop" onClick={() => setShowForm(false)}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-add-title" onClick={(event) => event.stopPropagation()}><button className="admin-modal-close" onClick={() => setShowForm(false)} aria-label="Đóng">×</button><div className="admin-modal-kicker">QUẢN LÝ POI</div><h2 id="admin-add-title">Thêm địa điểm</h2><p>Địa điểm mới sẽ được lưu thành bản nháp trên giao diện này.</p><form onSubmit={addPlace}><label>Tên địa điểm<input name="name" required placeholder="Ví dụ: Phòng truyền thống SGU" /></label><div className="admin-form-row"><label>Danh mục<select name="category">{categories.map((category) => <option key={category}>{category}</option>)}</select></label><label>Cơ sở / vị trí<input name="location" required placeholder="Ví dụ: Cơ sở chính" /></label></div><label>Mô tả<textarea name="description" required rows={3} placeholder="Mô tả ngắn về địa điểm" /></label><div className="admin-modal-actions"><button type="button" className="admin-cancel-button" onClick={() => setShowForm(false)}>Hủy</button><button className="admin-primary-button" type="submit">Lưu bản nháp</button></div></form></section></div>}
+    {showForm && <div className="admin-modal-backdrop" onClick={() => setShowForm(false)}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-add-title" onClick={(event) => event.stopPropagation()}><button className="admin-modal-close" onClick={() => setShowForm(false)} aria-label="Đóng">×</button><div className="admin-modal-kicker">QUẢN LÝ POI</div><h2 id="admin-add-title">Thêm địa điểm</h2><p>Địa điểm mới sẽ được lưu thành bản nháp trên giao diện này.</p><form onSubmit={addPlace}><label>Tên địa điểm<input name="name" required placeholder="Ví dụ: Phòng truyền thống SGU" /></label><div className="admin-form-row"><label>Danh mục<select name="category">{categories.map((category) => <option key={category}>{category}</option>)}</select></label><label>Cơ sở / vị trí<input name="location" required placeholder="Ví dụ: Cơ sở chính" /></label></div><div className="admin-form-row"><label>Vĩ độ (latitude)<input name="lat" type="number" required min="-90" max="90" step="any" placeholder="10.759694" /></label><label>Kinh độ (longitude)<input name="lng" type="number" required min="-180" max="180" step="any" placeholder="106.681348" /></label></div><label>Ảnh địa điểm<input name="image" type="file" accept="image/*" required onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!file) { setImagePreview(''); return }; const reader = new FileReader(); reader.onload = () => setImagePreview(typeof reader.result === 'string' ? reader.result : ''); reader.readAsDataURL(file) }} /></label>{imagePreview && <div className="admin-image-preview"><img src={imagePreview} alt="Xem trước ảnh địa điểm" /><span>Xem trước ảnh</span></div>}<label>Mô tả<textarea name="description" required rows={3} placeholder="Mô tả ngắn về địa điểm" /></label><div className="admin-modal-actions"><button type="button" className="admin-cancel-button" onClick={() => { setShowForm(false); setImagePreview('') }}>Hủy</button><button className="admin-primary-button" type="submit">Lưu bản nháp</button></div></form></section></div>}
   </section>
 }
