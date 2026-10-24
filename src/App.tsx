@@ -1,6 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import sguBuilding from './assets/sgu-building.png'
+import auditoriumAMain from './assets/hoi-truong-a-co-so-chinh.jpg'
+import tableTennisMain from './assets/bong-ban-co-so-chinh.jpg'
+import badmintonCourtMain from './assets/san-cau-long-co-so-chinh.jpg'
+import volleyballCourtMain from './assets/san-bong-chuyen-co-so-chinh.jpg'
+import soccerFieldMain from './assets/san-bong-da-co-so-chinh.jpg'
+import basketballCourtMain from './assets/san-bong-ro-co-so-chinh.jpg'
+import toaACampusOne from './assets/toa-a-coso-1.jpg'
+import toaBCampusOne from './assets/toa-b-coso-1.jpg'
+import toaCCampusOne from './assets/toa-c-coso-1.jpg'
+import canteenCampusOne from './assets/cantin-coso-1.jpg'
+import studySpaceMainOne from './assets/khu-tu-hoc-1-co-so-chinh.jpg'
+import canteenMain from './assets/cantin-co-so-chinh.jpg'
+import klfMain from './assets/klf-co-so-chinh.jpg'
+import buildingEMain from './assets/toa-e-co-so-chinh.jpg'
+import adminBuildingMain from './assets/khu-hieu-bo-co-so-chinh.jpg'
+import buildingAMain from './assets/toa-a-co-so-chinh.jpg'
+import buildingCMain from './assets/toa-c-co-so-chinh.jpg'
+import buildingDMain from './assets/toa-d-co-so-chinh.jpg'
 import { LeafletMapView, type MapPoi } from './features/map/LeafletMapView'
+import { AdminDashboard } from './features/admin/AdminDashboard'
+import { AdminLogin } from './features/admin/AdminLogin'
 import { localeOptions, translate, type Locale, type TranslationKey } from './i18n/translations'
 import './App.css'
 
@@ -10,6 +30,7 @@ type Place = {
   name: string
   category: Exclude<Category, 'Tất cả'>
   description: string
+  narration?: string
   distance: string
   walk: string
   rating: string
@@ -64,46 +85,43 @@ const places: Place[] = [
     name: 'Tòa nhà chính SGU - Tòa C',
     category: 'Kiến trúc',
     description: 'Một góc Sài Gòn xưa giữa lòng khuôn viên đại học, nơi lưu giữ những câu chuyện của nhiều thế hệ sinh viên.',
+    narration: 'Bạn đang đứng trước Tòa C, một trong những công trình dễ nhận biết của Cơ sở chính Đại học Sài Gòn. Hãy ngắm các chi tiết mặt tiền và lối vòm đặc trưng, rồi dùng bản đồ để tiếp tục đến điểm tham quan kế tiếp.',
     distance: '120 m', walk: '2 phút', rating: '4.9', tag: 'Biểu tượng SGU', location: '273 An Dương Vương, Quận 5', lat: 10.759988109684326, lng: 106.68214083789893, campusId: 'main',
-    image: sguBuilding,
+    image: buildingCMain,
   },
   {
     id: 2,
     name: 'Trung tâm học liệu - KLF',
     category: 'Học tập',
     description: 'Không gian yên tĩnh để đọc, học nhóm và khám phá kho tài liệu dành cho sinh viên.',
+    narration: 'Đây là Trung tâm Hỗ trợ học tập KLF, một không gian phục vụ hoạt động học tập và tra cứu của sinh viên. Nếu muốn vào bên trong, hãy xem giờ mở cửa và hướng dẫn sử dụng được niêm yết tại trung tâm.',
     distance: '260 m', walk: '4 phút', rating: '4.8', tag: 'Góc yên tĩnh', location: 'Thư viện KLF, Trường Đại học Sài Gòn', lat: 10.759846314437505, lng: 106.68250612374378, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=85',
-  },
-  {
-    id: 3,
-    name: 'Sân trường thân quen',
-    category: 'Không gian xanh',
-    description: 'Hàng cây rợp bóng và những chiếc ghế đá quen thuộc — điểm hẹn giữa các tiết học.',
-    distance: '340 m', walk: '5 phút', rating: '4.7', tag: 'Được yêu thích', location: 'Sân trung tâm, SGU', lat: 10.75936, lng: 106.68192, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=1000&q=85',
+    image: klfMain,
   },
   {
     id: 5,
-    name: 'Sân bóng chuyên',
+    name: 'Sân bóng chuyền',
     category: 'Thể thao',
-    description: 'Khu vực sân bóng chuyên dùng trong khuôn viên Cơ sở chính SGU.',
+    description: 'Khu vực sân bóng chuyền dùng trong khuôn viên Cơ sở chính SGU.',
+    narration: 'Đây là sân bóng chuyền ngoài trời của Cơ sở chính, nơi diễn ra các hoạt động vận động và giao lưu thể thao. Hãy chú ý lịch sử dụng sân và nhường khu vực chơi khi có lớp hoặc đội đang tập luyện.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Cơ sở chính SGU', lat: 10.759754176422225, lng: 106.68234773658983, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
+    image: volleyballCourtMain,
   },
   {
     id: 6,
     name: 'Căn tin',
     category: 'Ẩm thực',
     description: 'Khu vực căn tin trong khuôn viên Cơ sở chính SGU.',
+    narration: 'Bạn đang ở căn tin Cơ sở chính, nơi sinh viên có thể dừng chân nghỉ ngơi và dùng bữa. Thực đơn và giờ phục vụ có thể thay đổi, vì vậy hãy xem thông tin tại quầy khi ghé thăm.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Ẩm thực', location: 'Cơ sở chính SGU', lat: 10.759644137207344, lng: 106.68199776223139, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1000&q=85',
+    image: canteenMain,
   },
   {
     id: 7,
     name: 'Khu B',
     category: 'Học tập',
     description: 'Khu nhà B thuộc khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Đây là Khu B trong khuôn viên Cơ sở chính. Hãy quan sát ký hiệu tòa và bảng chỉ dẫn ở các lối vào để xác định phòng học hoặc đơn vị mình cần tìm.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.759486821794933, lng: 106.68235634484213, campusId: 'main',
     image: sguBuilding,
   },
@@ -112,6 +130,7 @@ const places: Place[] = [
     name: 'Phòng Khảo thí và Đảm bảo chất lượng giáo dục',
     category: 'Học tập',
     description: 'Địa điểm Phòng Khảo thí và Đảm bảo chất lượng giáo dục trong khuôn viên SGU.',
+    narration: 'Đây là Phòng Khảo thí và Đảm bảo chất lượng giáo dục của trường. Đơn vị phụ trách các công việc liên quan đến khảo thí và bảo đảm chất lượng; nếu cần liên hệ, hãy xem thông tin hướng dẫn tại văn phòng.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Phòng chức năng', location: 'Cơ sở chính SGU', lat: 10.759229251078123, lng: 106.68294766487438, campusId: 'main',
     image: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1000&q=85',
   },
@@ -120,70 +139,79 @@ const places: Place[] = [
     name: 'Sân bóng đá',
     category: 'Thể thao',
     description: 'Khu vực sân bóng đá trong khuôn viên Cơ sở chính SGU.',
+    narration: 'Bạn đang ở sân bóng đá của Cơ sở chính. Đây là không gian dành cho hoạt động thể thao ngoài trời; hãy theo dõi lịch sử dụng và giữ an toàn khi sân đang có trận đấu hoặc buổi tập.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Cơ sở chính SGU', lat: 10.75964525637814, lng: 106.68143341142253, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
+    image: soccerFieldMain,
   },
   {
     id: 10,
     name: 'Nhà đa năng - sân bóng rổ',
     category: 'Thể thao',
     description: 'Khu vực sân bóng rổ thuộc Nhà đa năng của Cơ sở chính SGU.',
+    narration: 'Đây là sân bóng rổ trong Nhà đa năng của Cơ sở chính. Khu sân phục vụ hoạt động luyện tập và thi đấu; vui lòng kiểm tra lịch sử dụng trước khi vào sân.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Nhà đa năng, Cơ sở chính SGU', lat: 10.75957763302768, lng: 106.68181199492993, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
+    image: basketballCourtMain,
   },
   {
     id: 11,
     name: 'Nhà đa năng - sân cầu lông',
     category: 'Thể thao',
     description: 'Khu vực sân cầu lông thuộc Nhà đa năng của Cơ sở chính SGU.',
+    narration: 'Bạn đang ở sân cầu lông thuộc Nhà đa năng. Hãy quan sát các vạch sân và lưới, đồng thời xem lịch đăng ký hoặc hướng dẫn sử dụng được thông báo tại địa điểm.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Nhà đa năng, Cơ sở chính SGU', lat: 10.759480794792038, lng: 106.68153036298408, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
+    image: badmintonCourtMain,
   },
   {
     id: 12,
     name: 'Nhà đa năng - khu vực bóng bàn',
     category: 'Thể thao',
     description: 'Khu vực bóng bàn thuộc Nhà đa năng của Cơ sở chính SGU.',
+    narration: 'Đây là khu vực bóng bàn trong Nhà đa năng, phù hợp cho những trận đấu và buổi luyện tập trong nhà. Hãy sử dụng bàn, vợt và không gian chung đúng hướng dẫn của nhà trường.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Thể thao', location: 'Nhà đa năng, Cơ sở chính SGU', lat: 10.759316762604941, lng: 106.68158199550778, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1522778119026-d647f0596c20?auto=format&fit=crop&w=1000&q=85',
+    image: tableTennisMain,
   },
   {
     id: 13,
     name: 'Tòa E',
     category: 'Kiến trúc',
     description: 'Tòa E trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Bạn đang ở Tòa E của Cơ sở chính. Hãy đối chiếu tên tòa với sơ đồ tầng và số phòng trên bảng chỉ dẫn để tìm đúng lớp học hoặc khu vực cần đến.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.759056558527996, lng: 106.6818267073545, campusId: 'main',
-    image: sguBuilding,
+    image: buildingEMain,
   },
   {
     id: 14,
     name: 'Tòa A',
     category: 'Kiến trúc',
     description: 'Tòa A trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Đây là Tòa A trong khuôn viên Cơ sở chính. Khi vào tòa, hãy kiểm tra sơ đồ tầng và số phòng để định hướng; nếu chưa rõ, bạn có thể hỏi bộ phận hướng dẫn tại chỗ.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.75909281217745, lng: 106.68241024658684, campusId: 'main',
-    image: sguBuilding,
+    image: buildingAMain,
   },
   {
     id: 15,
     name: 'Tòa nhà hội trường A',
     category: 'Học tập',
     description: 'Tòa nhà hội trường A trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Đây là Hội trường A, nơi tổ chức các chương trình và hoạt động chung của trường. Khi tham dự sự kiện, hãy xem thông báo về thời gian, lối vào và chỗ ngồi tại khu vực hội trường.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Hội trường', location: 'Cơ sở chính SGU', lat: 10.759629468856865, lng: 106.6830846497268, campusId: 'main',
-    image: sguBuilding,
+    image: auditoriumAMain,
   },
   {
     id: 16,
     name: 'Khu tự học (1)',
     category: 'Học tập',
     description: 'Khu vực tự học trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Bạn đang ở Khu tự học 1 của Cơ sở chính. Đây là điểm dừng dành cho việc học cá nhân hoặc học nhóm; hãy giữ yên lặng và tuân thủ nội quy được niêm yết tại phòng.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Tự học', location: 'Cơ sở chính SGU', lat: 10.760005861266407, lng: 106.68255311273134, campusId: 'main',
-    image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=85',
+    image: studySpaceMainOne,
   },
   {
     id: 17,
     name: 'Khu tự học (2)',
     category: 'Học tập',
     description: 'Khu vực tự học trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Đây là Khu tự học 2 trong khuôn viên Cơ sở chính. Bạn có thể dùng nơi này để ôn bài hoặc làm việc nhóm, đồng thời giữ gìn bàn ghế và không gian chung.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Tự học', location: 'Cơ sở chính SGU', lat: 10.759748943794909, lng: 106.68265168391322, campusId: 'main',
     image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=85',
   },
@@ -192,6 +220,7 @@ const places: Place[] = [
     name: 'Hội trường C',
     category: 'Học tập',
     description: 'Hội trường C trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Bạn đang ở Hội trường C của Cơ sở chính, một địa điểm tổ chức hoạt động trong trường. Hãy theo dõi bảng thông báo tại lối vào để biết lịch sử dụng và hướng dẫn khi có sự kiện.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Hội trường', location: 'Cơ sở chính SGU', lat: 10.76008934399489, lng: 106.68244113162366, campusId: 'main',
     image: sguBuilding,
   },
@@ -200,6 +229,7 @@ const places: Place[] = [
     name: 'Hội trường B',
     category: 'Học tập',
     description: 'Hội trường B trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Đây là Hội trường B trong khuôn viên Cơ sở chính. Nếu đến dự chương trình, hãy kiểm tra thông báo tại cửa hội trường để biết giờ bắt đầu và khu vực vào phù hợp.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Hội trường', location: 'Cơ sở chính SGU', lat: 10.759622281169316, lng: 106.68262352183645, campusId: 'main',
     image: sguBuilding,
   },
@@ -208,30 +238,34 @@ const places: Place[] = [
     name: 'Khu Hiệu Bộ - HB',
     category: 'Kiến trúc',
     description: 'Khu Hiệu Bộ (HB) trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Bạn đang ở Khu Hiệu Bộ, ký hiệu HB trên bản đồ Cơ sở chính. Đây là khu làm việc của nhà trường; khách đến liên hệ nên xem bảng hướng dẫn và làm theo chỉ dẫn tại lối vào.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.76046995404809, lng: 106.68224883220537, campusId: 'main',
-    image: sguBuilding,
+    image: adminBuildingMain,
   },
   {
     id: 21,
     name: 'Tòa D',
     category: 'Kiến trúc',
     description: 'Tòa D trong khuôn viên Cơ sở chính Trường Đại học Sài Gòn.',
+    narration: 'Đây là Tòa D của Cơ sở chính. Hãy dùng ký hiệu tòa, sơ đồ tầng và số phòng để tìm điểm đến; bản đồ có thể giúp bạn tiếp tục hành trình trong khuôn viên.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở chính SGU', lat: 10.760277065043367, lng: 106.68176021257332, campusId: 'main',
-    image: sguBuilding,
+    image: buildingDMain,
   },
   {
     id: 22,
     name: 'Tòa A',
     category: 'Kiến trúc',
     description: 'Tòa A thuộc Cơ sở 1 Trường Đại học Sài Gòn.',
+    narration: 'Bạn đang ở Tòa A thuộc Cơ sở 1. Hãy kiểm tra bảng sơ đồ và số phòng trong tòa để xác định lớp học hoặc văn phòng cần đến.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 1', lat: 10.779236017474704, lng: 106.68458720350972, campusId: 'campus-1',
-    image: sguBuilding,
+    image: toaACampusOne,
   },
   {
     id: 23,
     name: 'Khu tự học',
     category: 'Học tập',
     description: 'Khu vực tự học tại Cơ sở 1 Trường Đại học Sài Gòn.',
+    narration: 'Đây là khu tự học của Cơ sở 1, nơi bạn có thể tập trung ôn bài hoặc học cùng bạn bè. Vui lòng giữ yên lặng và làm theo nội quy của không gian.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Tự học', location: 'Cơ sở 1', lat: 10.77927488221519, lng: 106.6842995360494, campusId: 'campus-1',
     image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=1000&q=85',
   },
@@ -240,30 +274,34 @@ const places: Place[] = [
     name: 'Tòa B',
     category: 'Kiến trúc',
     description: 'Tòa B thuộc Cơ sở 1 Trường Đại học Sài Gòn.',
+    narration: 'Bạn đang ở Tòa B của Cơ sở 1. Hãy đối chiếu số phòng với bảng chỉ dẫn tại các lối đi để tìm đúng lớp hoặc đơn vị.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 1', lat: 10.779278175818034, lng: 106.68389116972537, campusId: 'campus-1',
-    image: sguBuilding,
+    image: toaBCampusOne,
   },
   {
     id: 25,
     name: 'Tòa C',
     category: 'Kiến trúc',
     description: 'Tòa C thuộc Cơ sở 1 Trường Đại học Sài Gòn.',
+    narration: 'Đây là Tòa C thuộc Cơ sở 1. Hãy quan sát biển tên tòa và sơ đồ tầng để định hướng trước khi di chuyển đến phòng học.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 1', lat: 10.77907858349214, lng: 106.68352169543397, campusId: 'campus-1',
-    image: sguBuilding,
+    image: toaCCampusOne,
   },
   {
     id: 26,
     name: 'Căn tin',
     category: 'Ẩm thực',
     description: 'Căn tin trong khuôn viên Cơ sở 1 Trường Đại học Sài Gòn.',
+    narration: 'Bạn đang ở căn tin Cơ sở 1, nơi có thể dừng chân nghỉ ngơi và dùng bữa. Thực đơn và thời gian phục vụ được cập nhật tại quầy.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Ẩm thực', location: 'Cơ sở 1', lat: 10.77915631253372, lng: 106.68347207456736, campusId: 'campus-1',
-    image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1000&q=85',
+    image: canteenCampusOne,
   },
   {
     id: 27,
     name: 'Tòa B',
     category: 'Kiến trúc',
     description: 'Tòa B thuộc Cơ sở 2 Trường Đại học Sài Gòn.',
+    narration: 'Đây là Tòa B của Cơ sở 2. Hãy dùng biển tên và sơ đồ khu vực để tìm đúng phòng học hoặc nơi cần liên hệ.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 2', lat: 10.782978273047895, lng: 106.7061686392335, campusId: 'campus-2',
     image: sguBuilding,
   },
@@ -272,6 +310,7 @@ const places: Place[] = [
     name: 'Tòa A',
     category: 'Kiến trúc',
     description: 'Tòa A thuộc Cơ sở 2 Trường Đại học Sài Gòn.',
+    narration: 'Bạn đang ở Tòa A thuộc Cơ sở 2. Khi vào tòa, hãy xem số phòng và bảng hướng dẫn để xác định lối đi phù hợp.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 2', lat: 10.783124472482674, lng: 106.70595754077915, campusId: 'campus-2',
     image: sguBuilding,
   },
@@ -280,6 +319,7 @@ const places: Place[] = [
     name: 'Tòa C',
     category: 'Kiến trúc',
     description: 'Tòa C thuộc Cơ sở 2 Trường Đại học Sài Gòn.',
+    narration: 'Đây là Tòa C của Cơ sở 2. Hãy quan sát bảng chỉ dẫn tại khu vực để tìm lớp học hoặc đơn vị bạn muốn ghé thăm.',
     distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Khuôn viên SGU', location: 'Cơ sở 2', lat: 10.783606678010011, lng: 106.70673011804736, campusId: 'campus-2',
     image: sguBuilding,
   },
@@ -336,6 +376,8 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
 }
 
 function App() {
+  const isAdminRoute = window.location.pathname.replace(/\/+$/, '').endsWith('/admin') || window.location.hash === '#admin' || window.location.hash === '#/admin'
+  const [adminSignedIn, setAdminSignedIn] = useState(() => sessionStorage.getItem('sgu-go-admin-session') === 'signed-in')
   const [activeNav, setActiveNav] = useState('Khám phá')
   const [activeCampus, setActiveCampus] = useState<(typeof campusMaps)[number]['id']>('main')
   const [category, setCategory] = useState<Category>('Tất cả')
@@ -368,8 +410,8 @@ function App() {
   const handleUserLocation = useCallback((position: Coordinates) => setUserPosition(position), [])
 
   useEffect(() => {
-    document.title = t('pageTitle')
-  }, [t])
+    document.title = isAdminRoute ? 'Quản trị nội dung · SGU Go' : t('pageTitle')
+  }, [isAdminRoute, t])
 
   function displayDistance(place: Place): string {
     return userPosition ? formatDistance(distanceBetween(userPosition, place), language) : place.distance
@@ -410,7 +452,7 @@ function App() {
       return
     }
     window.speechSynthesis.cancel()
-    const narration = new SpeechSynthesisUtterance(`${mapSelection.name}. ${mapSelection.description}`)
+    const narration = new SpeechSynthesisUtterance(mapSelection.narration || `${mapSelection.name}. ${mapSelection.description}`)
     narration.lang = 'vi-VN'
     narration.rate = 0.95
     narration.onstart = () => { setPlaying(true); setNarrationMessage(t('narrationPlaying', { name: mapSelection.name })) }
@@ -516,6 +558,20 @@ function App() {
     { label: 'Đã lưu', key: 'saved', icon: 'heart' },
   ]
 
+  if (isAdminRoute) {
+    if (!adminSignedIn) return <AdminLogin onLogin={() => setAdminSignedIn(true)} />
+
+    return <div className="admin-site">
+      <header className="admin-site-header">
+        <a className="admin-site-brand" href={`${import.meta.env.BASE_URL}#home`}><span>SGU</span> Go</a>
+        <span className="admin-site-context">CỔNG QUẢN TRỊ · QUẢN LÝ ĐỊA ĐIỂM</span>
+        <div className="admin-site-actions"><button className="admin-site-logout" onClick={() => { sessionStorage.removeItem('sgu-go-admin-session'); setAdminSignedIn(false) }}>Đăng xuất</button><a className="admin-site-back" href={`${import.meta.env.BASE_URL}#home`}>Trang khách</a></div>
+      </header>
+      <main className="admin-site-main"><AdminDashboard places={poiItems} /></main>
+      <footer className="admin-site-footer">SGU Go <span>·</span> Hệ thống quản lý nội dung tham quan</footer>
+    </div>
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -543,7 +599,7 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb"><span>SGU Go</span><Icon name="chevron" size={14} /><strong>{t(activeNav === 'Bản đồ' ? 'map' : activeNav === 'Đã lưu' ? 'saved' : 'discover')}</strong></div>
-          <div className="top-actions"><label className="language-select-label"><span className="visually-hidden">{t('language')}</span><select className="language-select" value={language} onChange={(event) => { const selectedLocale = localeOptions.find((option) => option.code === event.target.value); if (selectedLocale) changeLanguage(selectedLocale.code) }} aria-label={t('language')}>{localeOptions.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label><span className="top-divider" /><button className="help-button">{t('help')}</button><div className="top-avatar" aria-label={t('guest')} title={t('guest')}>G</div></div>
+          <div className="top-actions"><label className="language-select-label"><span className="visually-hidden">{t('language')}</span><select className="language-select" value={language} onChange={(event) => { const selectedLocale = localeOptions.find((option) => option.code === event.target.value); if (selectedLocale) changeLanguage(selectedLocale.code) }} aria-label={t('language')}>{localeOptions.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label><span className="top-divider" /><button className="help-button">{t('help')}</button></div>
         </header>
 
         <div className="page-content">
@@ -565,15 +621,11 @@ function App() {
               <div className="today-note"><span className="weather-icon"><Icon name="sun" size={24} /></span><div><strong>{t('today')}</strong><small>{t('district')}</small></div></div>
             </section>
 
-            <section className="hero-map" aria-label={t('homeMapAria')}>
-              <div className="map-texture" /><div className="map-road road-one" /><div className="map-road road-two" /><div className="map-road road-three" />
-              <span className="map-label map-label-one">AN DƯƠNG VƯƠNG</span><span className="map-label map-label-two">NGUYỄN TRÃI</span><span className="map-label map-label-three">KHUÔN VIÊN SGU</span>
-              <div className="map-building building-one" /><div className="map-building building-two" /><div className="map-building building-three" /><div className="map-park"><span>🌿</span></div>
-              <div className="map-pin pin-a"><span>1</span><i /></div><div className="map-pin pin-b"><span>2</span><i /></div><div className="map-pin pin-c"><span>3</span><i /></div>
-              <div className="map-you"><span /><small>{t('guest')}</small></div>
-              <div className="map-overlay-card"><span className="mini-map-icon"><Icon name="map" size={19} /></span><div><strong>{t('nearby')}</strong><small>{t('samplePlaces')}</small></div><button onClick={() => setActiveNav('Bản đồ')} aria-label={t('openMap')}><Icon name="arrow" size={18} /></button></div>
-              <button className="map-expand" onClick={() => setActiveNav('Bản đồ')} aria-label={t('expandMap')}><Icon name="map" size={18} /></button>
-            </section>
+            {activeNav === 'Khám phá' && <section className="explore-discovery-panel">
+              <div className="explore-discovery-copy"><span className="explore-discovery-kicker">⌕ {t('nearbyHeading')}</span><h2>{t('discoveryHeading')}</h2><p>{t('homeCopy')}</p><button onClick={() => setActiveNav('Bản đồ')}>{t('viewMap')} <Icon name="arrow" size={16} /></button></div>
+              <div className="explore-category-shortcuts"><strong>{t('filterCategories')}</strong><div>{categories.filter((item) => item !== 'Tất cả').map((item) => <button key={item} onClick={() => { setCategory(item); document.querySelector('.places-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}><span className={`explore-category-dot category-${item === 'Kiến trúc' ? 'architecture' : item === 'Học tập' ? 'study' : item === 'Ẩm thực' ? 'food' : item === 'Không gian xanh' ? 'green' : 'sports'}`} />{t(categoryTranslationKeys[item])}<Icon name="chevron" size={13} /></button>)}</div></div>
+              <div className="explore-discovery-count"><strong>{poiItems.length}</strong><span>{t('samplePlaces')}</span></div>
+            </section>}
 
             <section className="places-section">
               <div className="section-heading"><div><div className="section-kicker">{t('nearbyHeading')}</div><h2>{activeNav === 'Đã lưu' ? t('savedHeading') : t('discoveryHeading')}</h2><p>{activeNav === 'Đã lưu' ? t('savedCount', { count: filteredPlaces.length }) : userPosition ? t('distanceMode') : t('nearbyCopy')}</p></div><button className="view-all" onClick={() => setActiveNav('Bản đồ')}>{t('viewMap')} <Icon name="arrow" size={16} /></button></div>
