@@ -11,6 +11,22 @@ OpenAPI document before treating this as an implementation contract.
 Admin and owner APIs are intentionally out of scope for this first frontend
 integration pass.
 
+## Campus SGU frontend scope
+
+The lecturer-provided system material describes a Quận 4 food-tour product and
+is retained unchanged as the source reference. The current frontend UI target
+is SGU campus locations instead. This is a frontend product-scope adaptation,
+not a change to the reference material or a claim that the backend already
+serves campus data.
+
+The frontend map view-model requires geographic coordinates for a POI to be
+rendered as a map marker. The public POI route may be reused only if the
+backend's dataset includes the SGU campus locations and coordinates. The
+material's `/static/maps/packs/v1/q4.pmtiles` example is specifically a Quận 4
+map pack; do not use it as the SGU campus basemap. A campus map asset/tileset
+and the backend source of campus POIs still need to be identified before map
+integration. These differences do not change the documented API routes below.
+
 ## Routes explicitly named in the project material
 
 | Method | Path | Documented contract | Still unspecified |
@@ -42,6 +58,8 @@ out of scope.
 ## Required before treating this as final
 
 - Backend base URL and deployment environment configuration.
+- Whether the public POI endpoint will serve the SGU campus dataset with
+  coordinates, and the source/format of a campus-specific basemap.
 - Exact field types and any request/response details not specified above.
 - Error envelope, status codes, and authentication requirements for public routes.
 - Exact POI delta-sync precedence and map/audio cache/header behavior.
