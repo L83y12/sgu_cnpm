@@ -177,6 +177,9 @@ h1, h2, p { margin: 0; }
 .leaflet-map-placeholder button { border: 1px solid #dce8da; border-radius: 7px; padding: 8px 12px; color: #41664c; background: #fff; cursor: pointer; }
 .leaflet-map-locate { position: absolute; z-index: 500; top: 13px; right: 13px; display: inline-flex; align-items: center; gap: 7px; height: 35px; padding: 0 11px; border: 1px solid #17528a; border-radius: 8px; color: #fff; background: #2169ad; box-shadow: 0 3px 10px #174e8a55; font-size: 10px; font-weight: 700; cursor: pointer; }
 .leaflet-map-locate:hover { border-color: #103f6e; background: #185991; }
+.leaflet-map-locate.is-tracking { border-color: #176a45; background: #238253; }
+.leaflet-map-locate.is-tracking:hover { border-color: #125536; background: #1b6c44; }
+.leaflet-control-attribution { font-size: 8px !important; }
 .leaflet-map-message { position: absolute; z-index: 500; right: 12px; bottom: 28px; max-width: min(340px,calc(100% - 24px)); padding: 9px 11px; border: 1px solid #e8ddd0; border-radius: 8px; color: #765c42; background: #fffaf4; box-shadow: 0 3px 12px #263b2d17; font-size: 9px; }
 .leaflet-poi-icon { border: 0 !important; background: transparent !important; }
 .leaflet-poi-icon span { display: grid; place-items: center; width: 36px; height: 36px; border: 3px solid #fff; border-radius: 50% 50% 50% 5px; color: #fff; background: #397de0; box-shadow: 0 2px 8px #1d3a2850; font: 800 12px/1 'Manrope',sans-serif; transform: rotate(-45deg); }

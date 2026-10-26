@@ -16,10 +16,11 @@ not need an API key. Internet access is required to load the map library and
 tiles. The map keeps visible OpenStreetMap attribution; do not use public tile
 servers for bulk downloads or offline tile packages.
 
-The four POI coordinates in `src/App.tsx` are approximate demo positions around
-the SGU main campus. Verify them before using the map for campus navigation.
-The browser requests location permission only when the user selects
-**Vị trí của tôi**.
+Campus POIs and coordinates are maintained in `src/App.tsx`; verify them
+before using the map for campus navigation. Selecting **Vị trí của tôi** starts
+high-accuracy browser location tracking, updates the map marker and nearby
+distance ordering, and requires location permission in a secure context
+(HTTPS or localhost). Select it again to stop tracking.
 
 Before opening a pull request, run:
 
