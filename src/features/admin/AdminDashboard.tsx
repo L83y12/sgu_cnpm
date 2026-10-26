@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { adminApi } from './adminApi'
 import { fetchAnalytics, type AnalyticsSnapshot } from '../../analytics'
 import './AdminDashboard.css'
@@ -34,23 +34,29 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
   const [filter, setFilter] = useState('Tất cả địa điểm')
   const [notice, setNotice] = useState('')
 
-  async function loadPlaces() {
-    setLoading(true)
-    setLoadError('')
-    try {
-      let result = await adminApi.listPois()
-      if (result.total === 0 && initialPlaces.length) {
-        await adminApi.bootstrapPois(initialPlaces)
-        result = await adminApi.listPois()
-      }
-      setPlaces(result.items)
-      setStatuses(Object.fromEntries(result.items.map((poi) => [poi.id, poi.status === 'draft' ? 'Bản nháp' : 'Đang hiển thị'])))
-    } catch (reason) {
-      setLoadError(reason instanceof Error ? reason.message : 'Không thể tải địa điểm.')
-    } finally { setLoading(false) }
-  }
+  const fetchPlaces = useCallback(async () => {
+    let result = await adminApi.listPois()
+    if (result.total === 0 && initialPlaces.length) {
+      await adminApi.bootstrapPois(initialPlaces)
+      result = await adminApi.listPois()
+    }
+    return result.items
+  }, [initialPlaces])
 
-  useEffect(() => { void loadPlaces() }, [])
+  useEffect(() => {
+    let cancelled = false
+    void fetchPlaces().then((items) => {
+      if (cancelled) return
+      setLoadError('')
+      setPlaces(items)
+      setStatuses(Object.fromEntries(items.map((poi) => [poi.id, poi.status === 'draft' ? 'Bản nháp' : 'Đang hiển thị'])))
+    }).catch((reason) => {
+      if (!cancelled) setLoadError(reason instanceof Error ? reason.message : 'Không thể tải địa điểm.')
+    }).finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [fetchPlaces])
 
   useEffect(() => {
     let cancelled = false
@@ -65,12 +71,16 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
     return () => { cancelled = true; window.clearInterval(interval) }
   }, [])
 
-  useEffect(() => {
-    if (loading || loadError || places.length || !initialPlaces.length) return
-    void adminApi.bootstrapPois(initialPlaces).then(() => loadPlaces()).catch((reason) => {
-      setLoadError(reason instanceof Error ? reason.message : 'Không thể khởi tạo dữ liệu POI.')
-    })
-  }, [initialPlaces, loadError, loading, places.length])
+  function retryLoadPlaces() {
+    setLoading(true)
+    setLoadError('')
+    void fetchPlaces().then((items) => {
+      setPlaces(items)
+      setStatuses(Object.fromEntries(items.map((poi) => [poi.id, poi.status === 'draft' ? 'Bản nháp' : 'Đang hiển thị'])))
+    }).catch((reason) => {
+      setLoadError(reason instanceof Error ? reason.message : 'Không thể tải địa điểm.')
+    }).finally(() => setLoading(false))
+  }
 
   const visiblePlaces = useMemo(() => places.filter((place) => {
     const matchesQuery = `${place.name} ${place.category} ${place.location}`.toLocaleLowerCase('vi').includes(query.toLocaleLowerCase('vi'))
@@ -110,7 +120,7 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
     </header>
 
     {notice && <div className="admin-notice" role="status">✓ {notice}</div>}
-    {loadError && <div className="admin-notice admin-load-error" role="alert">{loadError} <button onClick={() => void loadPlaces()}>Thử tải lại</button><span>Hãy chạy <code>npm run dev:api</code> trong terminal API.</span></div>}
+    {loadError && <div className="admin-notice admin-load-error" role="alert">{loadError} <button onClick={retryLoadPlaces}>Thử tải lại</button><span>Hãy chạy <code>npm run dev:api</code> trong terminal API.</span></div>}
 
     <div className="admin-stat-grid">
       <article className="admin-stat-card"><span className="admin-stat-icon green">⌖</span><span className="admin-stat-label">Tổng địa điểm</span><strong>{places.length}</strong><small>Trong danh sách POI</small></article>
