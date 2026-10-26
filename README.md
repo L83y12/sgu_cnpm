@@ -9,6 +9,21 @@ npm ci
 npm run dev
 ```
 
+### Campus map
+
+The map uses Leaflet with OpenStreetMap data from the OSM tile server and does
+not need an API key. Internet access is required to load the map library and
+tiles. The map keeps visible OpenStreetMap attribution; do not use public tile
+servers for bulk downloads or offline tile packages.
+
+Campus POIs and coordinates are maintained in `src/features/poi/data/demoPlaces.ts`; verify them
+before using the map for campus navigation. Selecting **Vị trí của tôi** starts
+high-accuracy browser location tracking, updates the map marker and nearby
+distance ordering, and requires location permission in a secure context
+(HTTPS or localhost). Select it again to stop tracking.
+
+### API configuration
+
 For API integration, copy `.env.example` to `.env.local` and set
 `VITE_API_BASE_URL` to the backend API base URL, including its mounted API
 prefix (for example, `/api/v1`). The URL is intentionally not prefilled until
@@ -62,6 +77,30 @@ as the source of project requirements. It is not a replacement for the
 backend's authoritative OpenAPI specification. Behavioral details stated in
 the project material are captured there; only details not specified by the
 material are marked for backend confirmation.
+
+### Local admin API
+
+The admin POI management screen has a small Node API for local development.
+Run it and Vite in separate terminals from the repository root:
+
+```sh
+npm run dev:api
+npm run dev
+```
+
+Open `http://localhost:5173/sgu_cnpm/#/admin`. The API creates `server/data/pois.json` and
+`server/data/admins.json`, and stores uploaded pictures in `server/uploads/`;
+these runtime files are ignored by Git. On the first admin dashboard load, the
+existing demo POIs are imported into the API store. New POIs start as drafts;
+use the row action to publish them to the guest map. The demo administrator is
+`admin@sgu.edu.vn` / `sguadmin2026`. The admin screen has no self-registration;
+configure the server account with `SGU_ADMIN_EMAIL` and `SGU_ADMIN_PASSWORD`.
+
+This is a local development backend, not a GitHub Pages deployment. To share
+admin changes with teammates or deploy them, host this Node API and its
+persistent data storage, set `VITE_API_BASE_URL` to the API origin, and set
+`SGU_ADMIN_EMAIL` and `SGU_ADMIN_PASSWORD` on the server. GitHub Pages serves
+only the frontend and cannot persist these API records by itself.
 
 ## Web UI collaboration
 
