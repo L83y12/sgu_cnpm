@@ -10,7 +10,7 @@ export function NotFoundPage() {
         Địa chỉ bạn mở không tồn tại hoặc đã được thay đổi.
       </p>
       <Link className="page-link" to="/">
-        Quay lại danh sách địa điểm
+        Quay lại khám phá SGU
       </Link>
     </section>
   )

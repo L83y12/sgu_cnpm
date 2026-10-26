@@ -29,7 +29,7 @@ export function AdminLogin({ onLogin }: Props) {
   }
 
   return <main className="admin-login-page">
-    <a className="admin-login-back" href={`${import.meta.env.BASE_URL}#home`}>← Quay lại trang khách</a>
+    <a className="admin-login-back" href={`${import.meta.env.BASE_URL}#/`}>← Quay lại trang khách</a>
     <section className="admin-login-card" aria-labelledby="admin-login-title">
       <div className="admin-login-brand"><span className="admin-login-mark">S</span><span>SGU <i>Go</i></span></div>
       <div className="admin-login-kicker">CỔNG QUẢN TRỊ</div>
