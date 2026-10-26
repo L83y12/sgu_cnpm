@@ -585,6 +585,7 @@ function App() {
             distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Địa điểm mới',
             image: poi.image || sguBuilding,
             lat: Number(poi.lat), lng: Number(poi.lng),
+            campusId: campusMaps.find((campus) => campus.id === poi.campusId)?.id,
           } satisfies Place))
           setPoiItems([...places, ...additional])
           setPoiStatus('success')
@@ -600,7 +601,7 @@ function App() {
     setPoiStatus('loading')
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`)
     void fetchPublishedPois().then((remotePois) => {
-      const additional = remotePois.filter((poi) => !places.some((place) => place.id === poi.id)).map((poi) => ({ ...poi, category: poi.category as Exclude<Category, 'Tất cả'>, distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Địa điểm mới', image: poi.image || sguBuilding, lat: Number(poi.lat), lng: Number(poi.lng) } satisfies Place))
+      const additional = remotePois.filter((poi) => !places.some((place) => place.id === poi.id)).map((poi) => ({ ...poi, category: poi.category as Exclude<Category, 'Tất cả'>, distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Địa điểm mới', image: poi.image || sguBuilding, lat: Number(poi.lat), lng: Number(poi.lng), campusId: campusMaps.find((campus) => campus.id === poi.campusId)?.id } satisfies Place))
       setPoiItems([...places, ...additional]); setPoiStatus('success')
     }).catch(() => { setPoiItems(places); setPoiStatus('success') })
   }
