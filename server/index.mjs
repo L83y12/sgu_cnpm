@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import { createReadStream } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,14 +14,32 @@ const uploadsDir = path.join(root, 'uploads')
 const poiFile = path.join(dataDir, 'pois.json')
 const userFile = path.join(dataDir, 'admins.json')
 const analyticsFile = path.join(dataDir, 'analytics.json')
+const activeVisitorsFile = path.join(dataDir, 'active-visitors.sqlite')
 const port = Number(process.env.API_PORT || 8787)
 const sessionTtlMs = 12 * 60 * 60 * 1000
 const sessions = new Map()
-const activeVisitors = new Map()
 let writeQueue = Promise.resolve()
 
 await mkdir(dataDir, { recursive: true })
 await mkdir(uploadsDir, { recursive: true })
+const activeVisitorsDb = new DatabaseSync(activeVisitorsFile)
+activeVisitorsDb.exec(`
+  PRAGMA journal_mode = WAL;
+  PRAGMA busy_timeout = 5000;
+  CREATE TABLE IF NOT EXISTS active_visitors (
+    visitor_id TEXT PRIMARY KEY,
+    last_seen INTEGER NOT NULL,
+    poi_id TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_active_visitors_last_seen ON active_visitors(last_seen);
+`)
+const deleteExpiredVisitors = activeVisitorsDb.prepare('DELETE FROM active_visitors WHERE last_seen < ?')
+const getVisitor = activeVisitorsDb.prepare('SELECT poi_id FROM active_visitors WHERE visitor_id = ?')
+const upsertVisitor = activeVisitorsDb.prepare(`
+  INSERT INTO active_visitors (visitor_id, last_seen, poi_id) VALUES (?, ?, ?)
+  ON CONFLICT(visitor_id) DO UPDATE SET last_seen = excluded.last_seen, poi_id = excluded.poi_id
+`)
+const getActiveVisitors = activeVisitorsDb.prepare('SELECT visitor_id, poi_id FROM active_visitors WHERE last_seen >= ?')
 let analytics = await readJson(analyticsFile, { heardUsers: {} })
 
 async function readJson(file, fallback) {
@@ -112,11 +131,8 @@ function isPoiValid(poi) {
   return poi && Number.isInteger(Number(poi.id)) && poi.name && poi.category && poi.location
 }
 
-function cleanActiveVisitors() {
-  const cutoff = Date.now() - 45_000
-  for (const [visitorId, visitor] of activeVisitors) {
-    if (visitor.lastSeen < cutoff) activeVisitors.delete(visitorId)
-  }
+function cleanActiveVisitors(now = Date.now()) {
+  deleteExpiredVisitors.run(now - 45_000)
 }
 
 function validVisitorId(value) {
@@ -144,6 +160,7 @@ const server = createServer(async (request, response) => {
 
     if (request.method === 'GET' && url.pathname === '/api/analytics') {
       cleanActiveVisitors()
+      const activeVisitors = getActiveVisitors.all(Date.now() - 45_000)
       const pois = {}
       for (const [poiId, visitorIds] of Object.entries(analytics.heardUsers)) {
         pois[poiId] = { heard: visitorIds.length, active: 0 }
@@ -161,20 +178,19 @@ const server = createServer(async (request, response) => {
       const body = await bodyJson(request)
       const visitorId = validVisitorId(body.visitorId)
       cleanActiveVisitors()
-      const visitor = activeVisitors.get(visitorId) || { lastSeen: Date.now(), poiId: null }
-      visitor.lastSeen = Date.now()
+      const existingVisitor = getVisitor.get(visitorId)
+      let poiId = existingVisitor?.poi_id ?? null
       if (url.pathname.endsWith('/start')) {
-        const poiId = String(Number(body.poiId))
         if (!Number.isInteger(Number(body.poiId)) || Number(body.poiId) <= 0) return send(response, 400, { error: 'Mã POI không hợp lệ.' })
-        visitor.poiId = poiId
+        poiId = String(Number(body.poiId))
         const ids = new Set(analytics.heardUsers[poiId] || [])
         ids.add(visitorId)
         analytics.heardUsers[poiId] = [...ids]
         await saveJson(analyticsFile, analytics)
       } else if (url.pathname.endsWith('/end')) {
-        if (visitor.poiId === String(Number(body.poiId))) visitor.poiId = null
+        if (poiId === String(Number(body.poiId))) poiId = null
       }
-      activeVisitors.set(visitorId, visitor)
+      upsertVisitor.run(visitorId, Date.now(), poiId)
       return send(response, 200, { ok: true })
     }
 

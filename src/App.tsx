@@ -345,13 +345,6 @@ const campusMaps = [
   },
 ] as const
 
-function resolveQrPlace(value: string, places: readonly Place[]) {
-  const normalized = value.trim().toLocaleLowerCase('vi')
-  const id = value.match(/(?:poi|place)[=/:-]?(\d+)/i)?.[1]
-    ?? value.match(/(?:^|\/)(\d+)\/?(?:\?.*)?$/)?.[1]
-  return places.find((place) => String(place.id) === id || place.name.toLocaleLowerCase('vi') === normalized)
-}
-
 function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
     compass: <><circle cx="12" cy="12" r="9" /><path d="m15.7 8.3-2.5 5-4.9 2.4 2.4-4.9 5-2.5Z" /></>,
@@ -382,10 +375,6 @@ function App() {
   const [saved, setSaved] = useState<number[]>([2])
   const [selected, setSelected] = useState<Place | null>(null)
   const [mapSelection, setMapSelection] = useState<Place | null>(null)
-  const [qrOpen, setQrOpen] = useState(false)
-  const [qrMessage, setQrMessage] = useState('')
-  const [qrCode, setQrCode] = useState('')
-  const qrVideo = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
   const [playingPoiId, setPlayingPoiId] = useState<number | null>(null)
   const listeningPoiId = useRef<number | null>(null)
@@ -453,7 +442,6 @@ function App() {
     setNarrationMessage(mapSelection
       ? translate(nextLanguage, nextLanguage === 'vi' || nextLanguage === 'en' ? 'selectedReady' : 'narrationUnsupported', { name: localizedPlace(mapSelection, nextLanguage).name })
       : translate(nextLanguage, 'narrationIdle'))
-    if (qrOpen) setQrMessage(translate(nextLanguage, 'qrStart'))
   }
 
   const handleMapSelect = useCallback((place: MapPoi) => {
@@ -513,63 +501,6 @@ function App() {
     window.speechSynthesis?.cancel()
     if (listeningPoiId.current !== null) void reportListeningEnd(listeningPoiId.current)
   }, [])
-
-  useEffect(() => {
-    if (!qrOpen) return
-    const videoElement = qrVideo.current
-    let stream: MediaStream | null = null
-    let timer: number | null = null
-    let scanning = false
-    const Detector = (window as Window & {
-      BarcodeDetector?: new (options: { formats: string[] }) => { detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>> }
-    }).BarcodeDetector
-
-    async function startScanner() {
-      if (!Detector) {
-        setQrMessage(t('qrUnsupported'))
-        return
-      }
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setQrMessage(t('cameraUnavailable'))
-        return
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-        if (!videoElement) return
-        videoElement.srcObject = stream
-        await videoElement.play()
-        setQrMessage(t('cameraReady'))
-        const detector = new Detector({ formats: ['qr_code'] })
-        timer = window.setInterval(async () => {
-          if (scanning || !videoElement || videoElement.readyState < 2) return
-          scanning = true
-          try {
-            const codes = await detector.detect(videoElement)
-            const rawValue = codes[0]?.rawValue?.trim()
-            if (rawValue) {
-              const match = resolveQrPlace(rawValue, poiItems)
-              if (match) {
-                handleMapSelect(match)
-                setQrMessage(t('selectedReady', { name: match.name }))
-                setQrOpen(false)
-              } else {
-                setQrMessage(`${rawValue}: ${t('qrNotFound')}`)
-              }
-            }
-          } catch { setQrMessage(t('cameraUnavailable')) }
-          scanning = false
-        }, 500)
-      } catch {
-        setQrMessage(t('cameraPermission'))
-      }
-    }
-    void startScanner()
-    return () => {
-      if (timer !== null) window.clearInterval(timer)
-      stream?.getTracks().forEach((track) => track.stop())
-      if (videoElement) videoElement.srcObject = null
-    }
-  }, [handleMapSelect, poiItems, qrOpen, t])
 
   useEffect(() => {
     const demoError = new URLSearchParams(window.location.search).get('poiState') === 'error'
@@ -669,7 +600,7 @@ function App() {
 
         <div className="page-content">
           {activeNav === 'Bản đồ' ? <section className="map-page">
-            <header className="map-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> {t('mapKicker')}</div><h1>{t('mapTitle')}</h1><p>{t('mapDescription')}</p></div><button className="qr-scan-button" onClick={() => { setQrMessage(t('qrStart')); setQrOpen(true) }}>▦ <span>{t('scanQr')}</span></button></header>
+            <header className="map-page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> {t('mapKicker')}</div><h1>{t('mapTitle')}</h1><p>{t('mapDescription')}</p></div></header>
             <div className="map-utility-bar"><span>♫ {t('audioVietnamese')}</span></div>
             <div className="campus-map-tabs" role="tablist" aria-label={t('campusTabs')}>{campusMaps.map((campus) => <button key={campus.id} className={`campus-map-tab ${activeCampus === campus.id ? 'is-active' : ''}`} role="tab" aria-selected={activeCampus === campus.id} onClick={() => { setActiveCampus(campus.id); setMapSelection(null); setNarrationMessage(t('narrationIdle')) }}>{t(campus.id === 'main' ? 'mainCampus' : campus.id === 'campus-1' ? 'campusOne' : 'campusTwo')}</button>)}<span className="campus-map-address">{localizedCampusAddress(activeCampus, language, campusMaps.find((campus) => campus.id === activeCampus)?.address ?? '')}</span></div>
             <div className="map-workspace">
@@ -706,8 +637,6 @@ function App() {
           <footer className="page-footer"><span>SGU Go <span className="footer-bullet">·</span> {t('footer')}</span><span>{t('madeAtSgu')}</span></footer>
         </div>
       </main>
-
-      {qrOpen && <div className="modal-backdrop" role="presentation" onClick={() => setQrOpen(false)}><section className="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setQrOpen(false)} aria-label={t('close')}><Icon name="close" /></button><div className="qr-modal-heading"><span className="qr-modal-icon">▦</span><div><h2 id="qr-title">{t('qrTitle')}</h2><p>{t('qrDescription')}</p></div></div><video className="qr-video" ref={qrVideo} muted playsInline /><p className="qr-message" role="status">{qrMessage}</p><form className="qr-manual-form" onSubmit={(event) => { event.preventDefault(); const match = resolveQrPlace(qrCode, poiItems); if (match) { handleMapSelect(match); setQrOpen(false); setQrCode('') } else setQrMessage(t('qrNotFound')) }}><input value={qrCode} onChange={(event) => setQrCode(event.target.value)} placeholder={t('qrInput')} aria-label={t('qrInput')} /><button type="submit">{t('findPlace')}</button></form><div className="qr-place-options">{poiItems.map((place) => <button key={place.id} onClick={() => { handleMapSelect(place); setQrOpen(false) }}>{place.name}</button>)}</div></section></div>}
 
       {selected && <div className="modal-backdrop" role="presentation" onClick={() => setSelected(null)}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setSelected(null)} aria-label={t('close')}><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" /><span className="image-tag">{localizedSelected?.tag ?? selected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{t(categoryTranslationKeys[selected.category])}</span><span className="rating"><Icon name="star" size={13} /> {selected.rating}</span></div><h2 id="detail-title">{localizedSelected?.name ?? selected.name}</h2><p>{localizedSelected?.description ?? selected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {localizedSelected?.location ?? selected.location}<span>·</span>{displayDistance(localizedSelected ?? selected)}</div><div className="poi-listener-stats"><span>♫ {poiListeningStats(selected.id).heard} {listenerLabels().heard}</span><span><i /> {poiListeningStats(selected.id).active} {listenerLabels().active}</span></div><div className="audio-guide"><button className={`audio-play ${playing && playingPoiId === selected.id ? 'playing' : ''}`} onClick={() => toggleNarration(selected)} aria-label={t(playing && playingPoiId === selected.id ? 'stopNarration' : 'playNarration')}><Icon name={playing && playingPoiId === selected.id ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing && playingPoiId === selected.id ? t('narrationPlaying', { name: localizedSelected?.name ?? selected.name }) : t('narrationTitle')}</strong><small>{t('audioVietnamese')}</small></div><div className={`audio-wave ${playing && playingPoiId === selected.id ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => { setSelected(null); setActiveNav('Bản đồ') }}><Icon name="map" size={18} /> {t('directions')}</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? t('removeSaved') : t('savePlace')}</button></div></div></section></div>}
 

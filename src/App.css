@@ -244,19 +244,3 @@ h1, h2, p { margin: 0; }
 .map-place-row.is-selected { background: #edf6fa; }
 @media (max-width: 980px) { .map-workspace { grid-template-columns: 1fr; }.map-side-panels { grid-template-rows: auto auto auto; }.map-screen-canvas { height: 55vh; min-height: 390px; }.place-panel .map-place-list { max-height: 260px; } }
 @media (max-width: 490px) { .map-screen-canvas { height: 52vh; min-height: 320px; }.map-utility-bar { gap: 8px; font-size: 9px; }.map-utility-bar select { max-width: 138px; }.map-online { font-size: 8px; }.campus-map-tabs { flex-wrap: wrap; }.campus-map-tab { padding: 7px 10px; font-size: 9px; }.campus-map-address { flex-basis: 100%; margin: 0 2px; }.map-panel { padding: 13px; } }
-.qr-scan-button { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 3px; padding: 10px 14px; border: 0; border-radius: 10px; color: #fff; background: linear-gradient(115deg,#337ee9,#5146db); box-shadow: 0 4px 10px #4255da28; font-size: 11px; font-weight: 700; cursor: pointer; }
-.qr-scan-button:hover { filter: brightness(1.06); transform: translateY(-1px); }
-.qr-modal { width: min(520px,100%); max-height: min(88vh,760px); position: relative; overflow-y: auto; padding: 22px; border: 1px solid #e3eaf0; border-radius: 16px; background: #fff; box-shadow: 0 25px 75px #15231942; }
-.qr-modal-heading { display: flex; align-items: center; gap: 12px; padding-right: 32px; }
-.qr-modal-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; color: #377bdd; background: #edf4ff; font-size: 24px; }
-.qr-modal-heading h2 { color: #314253; font: 700 17px/1.3 'Manrope',sans-serif; }
-.qr-modal-heading p { margin-top: 4px; color: #83909a; font-size: 10px; }
-.qr-video { display: block; width: 100%; max-height: 310px; min-height: 170px; margin-top: 16px; border-radius: 12px; background: #16212b; object-fit: cover; }
-.qr-message { margin-top: 10px; color: #637487; font-size: 10px; line-height: 1.5; }
-.qr-manual-form { display: flex; gap: 7px; margin-top: 12px; }
-.qr-manual-form input { min-width: 0; flex: 1; border: 1px solid #dfe7ed; border-radius: 8px; padding: 9px 10px; color: #3a4b59; font-size: 10px; outline: 0; }
-.qr-manual-form input:focus { border-color: #88b5d0; box-shadow: 0 0 0 3px #4d9bc51a; }
-.qr-manual-form button { border: 0; border-radius: 8px; padding: 0 12px; color: #fff; background: #377b9b; font-size: 9px; font-weight: 700; cursor: pointer; }
-.qr-place-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.qr-place-options button { border: 1px solid #e2e9ed; border-radius: 18px; padding: 6px 9px; color: #667984; background: #fff; font-size: 8px; cursor: pointer; }
-.qr-place-options button:hover { border-color: #9ec5d7; color: #347b9d; background: #f4fafc; }
