@@ -18,19 +18,29 @@ type LeafletMarker = {
   openPopup: () => LeafletMarker
   on: (event: 'click', listener: () => void) => LeafletMarker
 }
+type LeafletCircleMarker = {
+  addTo: (map: LeafletMap) => LeafletCircleMarker
+  bindPopup: (content: HTMLElement | string) => LeafletCircleMarker
+  setLatLng: (position: LatLng) => LeafletCircleMarker
+  openPopup: () => LeafletCircleMarker
+}
 type LeafletMap = {
   setView: (center: LatLng, zoom: number) => LeafletMap
   panTo: (center: LatLng) => LeafletMap
   setZoom: (zoom: number) => LeafletMap
   remove: () => void
+  removeLayer: (layer: LeafletCircleMarker) => LeafletMap
 }
 type LeafletApi = {
   map: (element: HTMLElement, options?: Record<string, unknown>) => LeafletMap
   tileLayer: (url: string, options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
   marker: (position: LatLng, options?: Record<string, unknown>) => LeafletMarker
-  circleMarker: (position: LatLng, options?: Record<string, unknown>) => LeafletMarker
+  circleMarker: (position: LatLng, options?: Record<string, unknown>) => LeafletCircleMarker
   divIcon: (options: Record<string, unknown>) => unknown
-  control: { scale: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void } }
+  control: {
+    attribution: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
+    scale: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
+  }
 }
 
 const markerIcons: Record<string, string> = {
@@ -126,10 +136,14 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<LeafletMap | null>(null)
   const markers = useRef(new Map<number, LeafletMarker>())
+  const userMarker = useRef<LeafletCircleMarker | null>(null)
+  const userPosition = useRef<LatLng | null>(null)
+  const watchId = useRef<number | null>(null)
   const languageRef = useRef(language)
   const onSelectPlaceRef = useRef(onSelectPlace)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [message, setMessage] = useState('')
+  const [tracking, setTracking] = useState(false)
 
   useEffect(() => {
     languageRef.current = language
@@ -142,12 +156,16 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
     const activeMarkers = markers.current
     void loadLeaflet().then((L) => {
       if (cancelled || !mapElement.current) return
-      const map = L.map(mapElement.current, { scrollWheelZoom: true }).setView(center, 18)
+      const map = L.map(mapElement.current, {
+        scrollWheelZoom: true,
+        attributionControl: false,
+      }).setView(center, 18)
       activeMap = map
       mapInstance.current = map
+      L.control.attribution({ prefix: false }).addTo(map)
       L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a> · <a href="https://tile.openstreetmap.de/" target="_blank" rel="noreferrer">OSM tile server</a>',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> · <a href="https://tile.openstreetmap.de/" target="_blank" rel="noreferrer">tiles</a>',
       }).addTo(map)
       L.control.scale({ imperial: false }).addTo(map)
 
@@ -166,6 +184,15 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
           .on('click', () => onSelectPlaceRef.current(place))
         activeMarkers.set(place.id, marker)
       })
+      if (userPosition.current) {
+        userMarker.current = L.circleMarker(userPosition.current, {
+          radius: 8,
+          color: '#fff',
+          weight: 4,
+          fillColor: '#4285f4',
+          fillOpacity: 1,
+        }).addTo(map).bindPopup(translate(languageRef.current, 'currentLocation'))
+      }
       setStatus('ready')
     }).catch(() => {
       if (cancelled) return
@@ -177,9 +204,14 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
       cancelled = true
       if (mapInstance.current === activeMap) mapInstance.current = null
       activeMarkers.clear()
+      userMarker.current = null
       activeMap?.remove()
     }
   }, [center, places])
+
+  useEffect(() => () => {
+    if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current)
+  }, [])
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -197,30 +229,51 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
   }, [places, selectedPlaceId, status])
 
   function locateMe() {
+    if (watchId.current !== null) {
+      navigator.geolocation.clearWatch(watchId.current)
+      watchId.current = null
+      setTracking(false)
+      setMessage('')
+      return
+    }
+    if (!window.isSecureContext) {
+      setMessage(translate(language, 'geoSecureContext'))
+      return
+    }
     if (!navigator.geolocation) {
       setMessage(translate(language, 'geoUnsupported'))
       return
     }
-    navigator.geolocation.getCurrentPosition((position) => {
+    setMessage('')
+    watchId.current = navigator.geolocation.watchPosition((position) => {
       const map = mapInstance.current
-      if (!map || !window.L) return
       const currentPosition: LatLng = [position.coords.latitude, position.coords.longitude]
+      userPosition.current = currentPosition
       onLocate({ lat: position.coords.latitude, lng: position.coords.longitude })
-      window.L.circleMarker(currentPosition, {
-        radius: 8,
-        color: '#fff',
-        weight: 4,
-        fillColor: '#4285f4',
-        fillOpacity: 1,
-      }).addTo(map).bindPopup(translate(language, 'currentLocation')).openPopup()
+      if (!map || !window.L) return
+      if (userMarker.current) {
+        userMarker.current.setLatLng(currentPosition).openPopup()
+      } else {
+        userMarker.current = window.L.circleMarker(currentPosition, {
+          radius: 8,
+          color: '#fff',
+          weight: 4,
+          fillColor: '#4285f4',
+          fillOpacity: 1,
+        }).addTo(map).bindPopup(translate(language, 'currentLocation')).openPopup()
+      }
       map.panTo(currentPosition)
       map.setZoom(18)
       setMessage('')
     }, (error) => {
+      if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current)
+      watchId.current = null
+      setTracking(false)
       setMessage(error.code === error.PERMISSION_DENIED
         ? translate(language, 'geoPermission')
         : translate(language, 'geoError'))
-    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 })
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 })
+    setTracking(true)
   }
 
   return <div className="leaflet-map-shell">
@@ -231,7 +284,7 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
       {status === 'error' && <p>{message}</p>}
       {status === 'error' && <button onClick={() => window.location.reload()}>{translate(language, 'retry')}</button>}
     </div>}
-    <button className="leaflet-map-locate" onClick={locateMe} aria-label={translate(language, 'locateMeAria')}>⌖ <span>{translate(language, 'locateMe')}</span></button>
+    <button className={`leaflet-map-locate${tracking ? ' is-tracking' : ''}`} onClick={locateMe} aria-label={translate(language, tracking ? 'stopTracking' : 'locateMeAria')} aria-pressed={tracking}>⌖ <span>{translate(language, tracking ? 'geoTracking' : 'locateMe')}</span></button>
     {message && status === 'ready' && <div className="leaflet-map-message" role="status">{message}</div>}
   </div>
 }
