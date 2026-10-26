@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { adminApi } from './adminApi'
+import { fetchAnalytics, type AnalyticsSnapshot } from '../../analytics'
 import './AdminDashboard.css'
 
 export type AdminPoi = {
@@ -23,15 +25,52 @@ const categoryColors: Record<string, string> = {
 }
 
 export function AdminDashboard({ places: initialPlaces }: Props) {
-  const [places, setPlaces] = useState(initialPlaces)
+  const [places, setPlaces] = useState<AdminPoi[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [analytics, setAnalytics] = useState<AnalyticsSnapshot>({ activeUsers: 0, pois: {} })
   const [statuses, setStatuses] = useState<Record<number, PoiStatus>>({})
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('Tất cả địa điểm')
-  const [showForm, setShowForm] = useState(false)
   const [notice, setNotice] = useState('')
-  const [imagePreview, setImagePreview] = useState('')
 
-  useEffect(() => setPlaces(initialPlaces), [initialPlaces])
+  async function loadPlaces() {
+    setLoading(true)
+    setLoadError('')
+    try {
+      let result = await adminApi.listPois()
+      if (result.total === 0 && initialPlaces.length) {
+        await adminApi.bootstrapPois(initialPlaces)
+        result = await adminApi.listPois()
+      }
+      setPlaces(result.items)
+      setStatuses(Object.fromEntries(result.items.map((poi) => [poi.id, poi.status === 'draft' ? 'Bản nháp' : 'Đang hiển thị'])))
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : 'Không thể tải địa điểm.')
+    } finally { setLoading(false) }
+  }
+
+  useEffect(() => { void loadPlaces() }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const refresh = async () => {
+      try {
+        const result = await fetchAnalytics()
+        if (!cancelled) setAnalytics(result)
+      } catch { /* Keep last known analytics counts while the API is unavailable. */ }
+    }
+    void refresh()
+    const interval = window.setInterval(() => void refresh(), 12_000)
+    return () => { cancelled = true; window.clearInterval(interval) }
+  }, [])
+
+  useEffect(() => {
+    if (loading || loadError || places.length || !initialPlaces.length) return
+    void adminApi.bootstrapPois(initialPlaces).then(() => loadPlaces()).catch((reason) => {
+      setLoadError(reason instanceof Error ? reason.message : 'Không thể khởi tạo dữ liệu POI.')
+    })
+  }, [initialPlaces, loadError, loading, places.length])
 
   const visiblePlaces = useMemo(() => places.filter((place) => {
     const matchesQuery = `${place.name} ${place.category} ${place.location}`.toLocaleLowerCase('vi').includes(query.toLocaleLowerCase('vi'))
@@ -41,42 +80,15 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
   const narratedCount = places.filter((place) => Boolean(place.narration?.trim())).length
   const categories = [...new Set(places.map((place) => place.category))]
 
-  async function addPlace(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const imageFile = form.get('image')
-    if (!(imageFile instanceof File) || imageFile.size === 0) {
-      setNotice('Vui lòng chọn ảnh cho địa điểm.')
-      return
-    }
-    const image = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Không đọc được ảnh.'))
-      reader.onerror = () => reject(new Error('Không đọc được ảnh.'))
-      reader.readAsDataURL(imageFile)
-    }).catch(() => '')
-    if (!image) {
-      setNotice('Không thể tải ảnh. Vui lòng chọn lại tệp ảnh.')
-      return
-    }
-    const nextId = Math.max(0, ...places.map((place) => place.id)) + 1
-    const place: AdminPoi = {
-      id: nextId,
-      name: String(form.get('name') ?? '').trim(),
-      category: String(form.get('category') ?? 'Kiến trúc'),
-      location: String(form.get('location') ?? '').trim(),
-      description: String(form.get('description') ?? '').trim(),
-      lat: Number(form.get('lat')),
-      lng: Number(form.get('lng')),
-      image,
-      campusId: 'main',
-    }
-    setPlaces((current) => [place, ...current])
-    setStatuses((current) => ({ ...current, [nextId]: 'Bản nháp' }))
-    setShowForm(false)
-    setImagePreview('')
-    setNotice('Đã thêm địa điểm vào danh sách bản nháp.')
-    window.setTimeout(() => setNotice(''), 3500)
+  async function toggleStatus(place: AdminPoi) {
+    const status = statuses[place.id] ?? 'Đang hiển thị'
+    const next = status === 'Bản nháp' ? 'published' : 'draft'
+    try {
+      await adminApi.updatePoi(place.id, { status: next })
+      setStatuses((current) => ({ ...current, [place.id]: next === 'draft' ? 'Bản nháp' : 'Đang hiển thị' }))
+      setNotice(next === 'draft' ? 'Đã chuyển địa điểm thành bản nháp.' : 'Địa điểm đã được đăng công khai.')
+      window.setTimeout(() => setNotice(''), 3500)
+    } catch (reason) { setNotice(reason instanceof Error ? reason.message : 'Không thể cập nhật trạng thái.') }
   }
 
   function exportCsv() {
@@ -95,16 +107,17 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
   return <section className="admin-dashboard">
     <header className="admin-heading">
       <div><div className="admin-eyebrow"><span /> TRUNG TÂM QUẢN TRỊ</div><h1>Tổng quan</h1><p>Theo dõi địa điểm và nội dung trên SGU Go.</p></div>
-      <button className="admin-primary-button" onClick={() => setShowForm(true)}><span>＋</span> Thêm địa điểm</button>
     </header>
 
     {notice && <div className="admin-notice" role="status">✓ {notice}</div>}
+    {loadError && <div className="admin-notice admin-load-error" role="alert">{loadError} <button onClick={() => void loadPlaces()}>Thử tải lại</button><span>Hãy chạy <code>npm run dev:api</code> trong terminal API.</span></div>}
 
     <div className="admin-stat-grid">
       <article className="admin-stat-card"><span className="admin-stat-icon green">⌖</span><span className="admin-stat-label">Tổng địa điểm</span><strong>{places.length}</strong><small>Trong danh sách POI</small></article>
       <article className="admin-stat-card"><span className="admin-stat-icon blue">♫</span><span className="admin-stat-label">Có thuyết minh</span><strong>{narratedCount}<small className="admin-stat-total"> / {places.length}</small></strong><small>Nội dung audio tiếng Việt</small></article>
       <article className="admin-stat-card"><span className="admin-stat-icon amber">◷</span><span className="admin-stat-label">Bản nháp</span><strong>{places.filter((place) => statuses[place.id] === 'Bản nháp').length}</strong><small>Chờ quản trị viên duyệt</small></article>
       <article className="admin-stat-card"><span className="admin-stat-icon violet">▦</span><span className="admin-stat-label">Danh mục</span><strong>{categories.length}</strong><small>Nhóm địa điểm hiện có</small></article>
+      <article className="admin-stat-card"><span className="admin-stat-icon green">●</span><span className="admin-stat-label">Đang dùng app</span><strong>{analytics.activeUsers}</strong><small>Phiên hoạt động gần đây</small></article>
     </div>
 
     <div className="admin-overview-grid">
@@ -128,8 +141,8 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
     <section className="admin-panel admin-table-panel">
       <div className="admin-table-heading"><div><h2>Quản lý địa điểm</h2><p>Tra cứu và cập nhật trạng thái hiển thị của POI.</p></div><button className="admin-export-button" onClick={exportCsv}>↓ <span>Xuất CSV</span></button></div>
       <div className="admin-table-tools"><label className="admin-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm địa điểm, danh mục..." aria-label="Tìm địa điểm" /></label><select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Lọc theo trạng thái"><option>Tất cả địa điểm</option><option>Đang hiển thị</option><option>Bản nháp</option></select></div>
-      <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>ĐỊA ĐIỂM</th><th>DANH MỤC</th><th>VỊ TRÍ</th><th>TỌA ĐỘ</th><th>AUDIO</th><th>TRẠNG THÁI</th><th /></tr></thead><tbody>
-        {visiblePlaces.slice(0, 8).map((place) => {
+      <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>ĐỊA ĐIỂM</th><th>DANH MỤC</th><th>VỊ TRÍ</th><th>TỌA ĐỘ</th><th>AUDIO</th><th>ĐÃ NGHE</th><th>ĐANG NGHE</th><th>TRẠNG THÁI</th><th /></tr></thead><tbody>
+        {loading ? <tr><td colSpan={9}>Đang tải dữ liệu địa điểm…</td></tr> : visiblePlaces.map((place) => {
           const status = statuses[place.id] ?? 'Đang hiển thị'
           return (
             <tr key={place.id}>
@@ -138,17 +151,18 @@ export function AdminDashboard({ places: initialPlaces }: Props) {
               <td className="admin-location-cell">{place.location}</td>
               <td>{typeof place.lat === 'number' && typeof place.lng === 'number' ? `${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}` : '—'}</td>
               <td><span className={`admin-audio-state ${place.narration ? 'has-audio' : ''}`}>{place.narration ? '♫ Có audio' : '— Chưa có'}</span></td>
+              <td>{analytics.pois[String(place.id)]?.heard ?? 0}</td>
+              <td><span className="admin-live-count"><i />{analytics.pois[String(place.id)]?.active ?? 0}</span></td>
               <td><span className={`admin-status-pill ${status === 'Bản nháp' ? 'draft' : ''}`}><i />{status}</span></td>
-              <td><button className="admin-row-action" title={status === 'Bản nháp' ? 'Đăng địa điểm' : 'Chuyển thành bản nháp'} onClick={() => setStatuses((current) => ({ ...current, [place.id]: status === 'Bản nháp' ? 'Đang hiển thị' : 'Bản nháp' }))}>{status === 'Bản nháp' ? 'Đăng' : '•••'}</button></td>
+              <td><button className="admin-row-action" title={status === 'Bản nháp' ? 'Đăng địa điểm' : 'Chuyển thành bản nháp'} onClick={() => void toggleStatus(place)}>{status === 'Bản nháp' ? 'Đăng' : '•••'}</button></td>
             </tr>
           )
           }
         )}
       </tbody></table></div>
-      {visiblePlaces.length === 0 && <div className="admin-table-empty"><strong>Không tìm thấy địa điểm</strong><span>Thử đổi từ khóa hoặc bộ lọc.</span></div>}
-      {visiblePlaces.length > 8 && <div className="admin-table-footer">Đang hiển thị 8 trên {visiblePlaces.length} địa điểm <span>Danh sách đầy đủ sẽ được phân trang khi kết nối dữ liệu.</span></div>}
+      {!loading && !loadError && visiblePlaces.length === 0 && <div className="admin-table-empty"><strong>Không tìm thấy địa điểm</strong><span>Thử đổi từ khóa hoặc bộ lọc.</span></div>}
+      {!loading && visiblePlaces.length > 0 && <div className="admin-table-footer">Đang hiển thị {visiblePlaces.length} trên {places.length} địa điểm <span>Dữ liệu được lưu trên máy chủ cục bộ.</span></div>}
     </section>
 
-    {showForm && <div className="admin-modal-backdrop" onClick={() => setShowForm(false)}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-add-title" onClick={(event) => event.stopPropagation()}><button className="admin-modal-close" onClick={() => setShowForm(false)} aria-label="Đóng">×</button><div className="admin-modal-kicker">QUẢN LÝ POI</div><h2 id="admin-add-title">Thêm địa điểm</h2><p>Địa điểm mới sẽ được lưu thành bản nháp trên giao diện này.</p><form onSubmit={addPlace}><label>Tên địa điểm<input name="name" required placeholder="Ví dụ: Phòng truyền thống SGU" /></label><div className="admin-form-row"><label>Danh mục<select name="category">{categories.map((category) => <option key={category}>{category}</option>)}</select></label><label>Cơ sở / vị trí<input name="location" required placeholder="Ví dụ: Cơ sở chính" /></label></div><div className="admin-form-row"><label>Vĩ độ (latitude)<input name="lat" type="number" required min="-90" max="90" step="any" placeholder="10.759694" /></label><label>Kinh độ (longitude)<input name="lng" type="number" required min="-180" max="180" step="any" placeholder="106.681348" /></label></div><label>Ảnh địa điểm<input name="image" type="file" accept="image/*" required onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!file) { setImagePreview(''); return }; const reader = new FileReader(); reader.onload = () => setImagePreview(typeof reader.result === 'string' ? reader.result : ''); reader.readAsDataURL(file) }} /></label>{imagePreview && <div className="admin-image-preview"><img src={imagePreview} alt="Xem trước ảnh địa điểm" /><span>Xem trước ảnh</span></div>}<label>Mô tả<textarea name="description" required rows={3} placeholder="Mô tả ngắn về địa điểm" /></label><div className="admin-modal-actions"><button type="button" className="admin-cancel-button" onClick={() => { setShowForm(false); setImagePreview('') }}>Hủy</button><button className="admin-primary-button" type="submit">Lưu bản nháp</button></div></form></section></div>}
   </section>
 }

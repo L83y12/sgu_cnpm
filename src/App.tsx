@@ -21,6 +21,8 @@ import buildingDMain from './assets/toa-d-co-so-chinh.jpg'
 import { LeafletMapView, type MapPoi } from './features/map/LeafletMapView'
 import { AdminDashboard } from './features/admin/AdminDashboard'
 import { AdminLogin } from './features/admin/AdminLogin'
+import { clearAdminToken, fetchPublishedPois, getAdminToken } from './features/admin/adminApi'
+import { fetchAnalytics, reportListeningEnd, reportListeningStart, sendHeartbeat, type AnalyticsSnapshot } from './analytics'
 import { localeOptions, translate, type Locale, type TranslationKey } from './i18n/translations'
 import './App.css'
 
@@ -377,7 +379,7 @@ function Icon({ name, size = 20 }: { name: string; size?: number }) {
 
 function App() {
   const isAdminRoute = window.location.pathname.replace(/\/+$/, '').endsWith('/admin') || window.location.hash === '#admin' || window.location.hash === '#/admin'
-  const [adminSignedIn, setAdminSignedIn] = useState(() => sessionStorage.getItem('sgu-go-admin-session') === 'signed-in')
+  const [adminSignedIn, setAdminSignedIn] = useState(() => Boolean(getAdminToken()))
   const [activeNav, setActiveNav] = useState('Khám phá')
   const [activeCampus, setActiveCampus] = useState<(typeof campusMaps)[number]['id']>('main')
   const [category, setCategory] = useState<Category>('Tất cả')
@@ -390,6 +392,9 @@ function App() {
   const [qrCode, setQrCode] = useState('')
   const qrVideo = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
+  const [playingPoiId, setPlayingPoiId] = useState<number | null>(null)
+  const listeningPoiId = useRef<number | null>(null)
+  const [analytics, setAnalytics] = useState<AnalyticsSnapshot>({ activeUsers: 0, pois: {} })
   const [narrationMessage, setNarrationMessage] = useState('')
   const [language, setLanguage] = useState<Locale>('vi')
   const [userPosition, setUserPosition] = useState<Coordinates | null>(null)
@@ -413,8 +418,34 @@ function App() {
     document.title = isAdminRoute ? 'Quản trị nội dung · SGU Go' : t('pageTitle')
   }, [isAdminRoute, t])
 
+  useEffect(() => {
+    let cancelled = false
+    const refresh = async () => {
+      await sendHeartbeat()
+      try {
+        const snapshot = await fetchAnalytics()
+        if (!cancelled) setAnalytics(snapshot)
+      } catch { /* Keep last known counts while offline. */ }
+    }
+    void refresh()
+    const interval = window.setInterval(() => void refresh(), 12_000)
+    return () => { cancelled = true; window.clearInterval(interval) }
+  }, [])
+
   function displayDistance(place: Place): string {
     return userPosition ? formatDistance(distanceBetween(userPosition, place), language) : place.distance
+  }
+
+  function poiListeningStats(poiId: number) {
+    return analytics.pois[String(poiId)] ?? { heard: 0, active: 0 }
+  }
+
+  function listenerLabels() {
+    if (language === 'en') return { heard: 'heard', active: 'listening' }
+    if (language === 'ko') return { heard: '청취함', active: '청취 중' }
+    if (language === 'ja') return { heard: '聴取済み', active: '再生中' }
+    if (language === 'zh') return { heard: '已收听', active: '正在收听' }
+    return { heard: 'đã nghe', active: 'đang nghe' }
   }
 
   function changeLanguage(nextLanguage: Locale) {
@@ -435,15 +466,24 @@ function App() {
     }
   }, [language, poiItems])
 
-  function toggleMapNarration() {
-    if (!mapSelection) return
+  function stopListeningFor(poiId: number) {
+    if (listeningPoiId.current === poiId) {
+      listeningPoiId.current = null
+      void reportListeningEnd(poiId)
+    }
+    setPlaying(false)
+    setPlayingPoiId(null)
+  }
+
+  function toggleNarration(place: Place | null) {
+    if (!place) return
     if (language !== 'vi') {
       setNarrationMessage(t('narrationUnsupported'))
       return
     }
-    if (playing) {
+    if (playing && playingPoiId === place.id) {
       window.speechSynthesis?.cancel()
-      setPlaying(false)
+      stopListeningFor(place.id)
       setNarrationMessage(t('narrationStopped'))
       return
     }
@@ -452,16 +492,26 @@ function App() {
       return
     }
     window.speechSynthesis.cancel()
-    const narration = new SpeechSynthesisUtterance(mapSelection.narration || `${mapSelection.name}. ${mapSelection.description}`)
+    if (playingPoiId !== null) stopListeningFor(playingPoiId)
+    const narration = new SpeechSynthesisUtterance(place.narration || `${place.name}. ${place.description}`)
     narration.lang = 'vi-VN'
     narration.rate = 0.95
-    narration.onstart = () => { setPlaying(true); setNarrationMessage(t('narrationPlaying', { name: mapSelection.name })) }
-    narration.onend = () => { setPlaying(false); setNarrationMessage(t('narrationFinished')) }
-    narration.onerror = () => { setPlaying(false); setNarrationMessage(t('narrationError')) }
+    narration.onstart = () => {
+      listeningPoiId.current = place.id
+      setPlayingPoiId(place.id)
+      void reportListeningStart(place.id)
+      setPlaying(true)
+      setNarrationMessage(t('narrationPlaying', { name: place.name }))
+    }
+    narration.onend = () => { stopListeningFor(place.id); setNarrationMessage(t('narrationFinished')) }
+    narration.onerror = () => { stopListeningFor(place.id); setNarrationMessage(t('narrationError')) }
     window.speechSynthesis.speak(narration)
   }
 
-  useEffect(() => () => window.speechSynthesis?.cancel(), [])
+  useEffect(() => () => {
+    window.speechSynthesis?.cancel()
+    if (listeningPoiId.current !== null) void reportListeningEnd(listeningPoiId.current)
+  }, [])
 
   useEffect(() => {
     if (!qrOpen) return
@@ -522,24 +572,37 @@ function App() {
 
   useEffect(() => {
     const demoError = new URLSearchParams(window.location.search).get('poiState') === 'error'
+    let cancelled = false
     const timer = window.setTimeout(() => {
       if (demoError) {
         setPoiStatus('error')
       } else {
-        setPoiItems(places)
-        setPoiStatus('success')
+        void fetchPublishedPois().then((remotePois) => {
+          if (cancelled) return
+          const additional = remotePois.filter((poi) => !places.some((place) => place.id === poi.id)).map((poi) => ({
+            ...poi,
+            category: poi.category as Exclude<Category, 'Tất cả'>,
+            distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Địa điểm mới',
+            image: poi.image || sguBuilding,
+            lat: Number(poi.lat), lng: Number(poi.lng),
+          } satisfies Place))
+          setPoiItems([...places, ...additional])
+          setPoiStatus('success')
+        }).catch(() => {
+          if (!cancelled) { setPoiItems(places); setPoiStatus('success') }
+        })
       }
     }, 650)
-    return () => window.clearTimeout(timer)
+    return () => { cancelled = true; window.clearTimeout(timer) }
   }, [])
 
   function retryLoadPlaces() {
     setPoiStatus('loading')
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`)
-    window.setTimeout(() => {
-      setPoiItems(places)
-      setPoiStatus('success')
-    }, 500)
+    void fetchPublishedPois().then((remotePois) => {
+      const additional = remotePois.filter((poi) => !places.some((place) => place.id === poi.id)).map((poi) => ({ ...poi, category: poi.category as Exclude<Category, 'Tất cả'>, distance: 'Trong khuôn viên', walk: '—', rating: '—', tag: 'Địa điểm mới', image: poi.image || sguBuilding, lat: Number(poi.lat), lng: Number(poi.lng) } satisfies Place))
+      setPoiItems([...places, ...additional]); setPoiStatus('success')
+    }).catch(() => { setPoiItems(places); setPoiStatus('success') })
   }
 
   const filteredPlaces = useMemo(() => sortedPlaces.filter((place) => {
@@ -565,7 +628,7 @@ function App() {
       <header className="admin-site-header">
         <a className="admin-site-brand" href={`${import.meta.env.BASE_URL}#home`}><span>SGU</span> Go</a>
         <span className="admin-site-context">CỔNG QUẢN TRỊ · QUẢN LÝ ĐỊA ĐIỂM</span>
-        <div className="admin-site-actions"><button className="admin-site-logout" onClick={() => { sessionStorage.removeItem('sgu-go-admin-session'); setAdminSignedIn(false) }}>Đăng xuất</button><a className="admin-site-back" href={`${import.meta.env.BASE_URL}#home`}>Trang khách</a></div>
+        <div className="admin-site-actions"><button className="admin-site-logout" onClick={() => { clearAdminToken(); setAdminSignedIn(false) }}>Đăng xuất</button><a className="admin-site-back" href={`${import.meta.env.BASE_URL}#home`}>Trang khách</a></div>
       </header>
       <main className="admin-site-main"><AdminDashboard places={poiItems} /></main>
       <footer className="admin-site-footer">SGU Go <span>·</span> Hệ thống quản lý nội dung tham quan</footer>
@@ -599,7 +662,7 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb"><span>SGU Go</span><Icon name="chevron" size={14} /><strong>{t(activeNav === 'Bản đồ' ? 'map' : activeNav === 'Đã lưu' ? 'saved' : 'discover')}</strong></div>
-          <div className="top-actions"><label className="language-select-label"><span className="visually-hidden">{t('language')}</span><select className="language-select" value={language} onChange={(event) => { const selectedLocale = localeOptions.find((option) => option.code === event.target.value); if (selectedLocale) changeLanguage(selectedLocale.code) }} aria-label={t('language')}>{localeOptions.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label><span className="top-divider" /><button className="help-button">{t('help')}</button></div>
+          <div className="top-actions"><span className="app-user-count" title="Người đang sử dụng ứng dụng"><i />{analytics.activeUsers} <span>đang dùng</span></span><label className="language-select-label"><span className="visually-hidden">{t('language')}</span><select className="language-select" value={language} onChange={(event) => { const selectedLocale = localeOptions.find((option) => option.code === event.target.value); if (selectedLocale) changeLanguage(selectedLocale.code) }} aria-label={t('language')}>{localeOptions.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label><span className="top-divider" /><button className="help-button">{t('help')}</button></div>
         </header>
 
         <div className="page-content">
@@ -610,8 +673,8 @@ function App() {
             <div className="map-workspace">
               <section className="hero-map map-screen-canvas" aria-label={`${t('mapTitle')} · ${t(activeCampus === 'main' ? 'mainCampus' : activeCampus === 'campus-1' ? 'campusOne' : 'campusTwo')}`}><LeafletMapView key={activeCampus} places={activeCampusPlaces} selectedPlaceId={mapSelection?.id ?? null} onSelectPlace={handleMapSelect} center={campusMaps.find((campus) => campus.id === activeCampus)!.center} language={language} onLocate={handleUserLocation} /></section>
               <aside className="map-side-panels" aria-label={`${t('narrationTitle')} · ${t('map')}`}>
-                <section className="map-panel audio-panel"><div className="map-panel-title"><span className="panel-icon">♫</span><h2>{t('narrationTitle')}</h2></div><div className="narration-status"><p>{narrationMessage || t('narrationIdle')}</p></div><div className="narration-controls"><button className="narration-play" onClick={toggleMapNarration} disabled={!mapSelection} aria-label={t(playing ? 'stopNarration' : 'playNarration')}>{playing ? 'Ⅱ' : '▶'}</button><div className="narration-track"><strong>{mapSelection ? mapSelection.name : t('noPlaceSelected')}</strong><span><i className={playing ? 'track-playing' : ''} /></span></div><small>{t('audioVietnamese')}</small></div></section>
-                <section className="map-panel place-panel"><div className="map-panel-title"><span className="panel-icon">⌖</span><h2>{mapSelection ? t('placeInfo') : t('placeCount', { count: activeCampusPlaces.length })}</h2></div>{mapSelection ? <div className="map-selected-place"><span className="map-selected-category">{t(categoryTranslationKeys[mapSelection.category])}{mapSelection.walk !== '—' ? ` · ${mapSelection.walk}` : ''}</span><h3>{mapSelection.name}</h3><p>{mapSelection.description}</p><small><Icon name="pin" size={14} /> {mapSelection.location}</small><div className="map-selected-actions"><button className="map-open-detail" onClick={() => setSelected(mapSelection)}>{t('details')}</button><a href={`https://www.google.com/maps/dir/?api=1&destination=${mapSelection.lat},${mapSelection.lng}`} target="_blank" rel="noreferrer">{t('directions')}</a><button className="map-reset-selection" onClick={() => { setMapSelection(null); setNarrationMessage(t('narrationIdle')) }}>{t('otherPlace')}</button></div></div> : activeCampusPlaces.length ? <><p className="map-select-hint">{t('selectPlace')}</p><div className="map-place-list">{activeCampusNearbyPlaces.map((place, index) => <button className="map-place-row" key={place.id} onClick={() => handleMapSelect(place)}><span className="map-place-number">{index + 1}</span><span className="map-place-copy"><strong>{place.name}</strong><small>{t(categoryTranslationKeys[place.category])} <i>·</i> {place.location}</small></span><Icon name="chevron" size={17} /></button>)}</div></> : <p className="map-select-hint">{t('noCoordinates')}</p>}</section>
+                <section className="map-panel audio-panel"><div className="map-panel-title"><span className="panel-icon">♫</span><h2>{t('narrationTitle')}</h2></div><div className="narration-status"><p>{narrationMessage || t('narrationIdle')}</p></div><div className="narration-controls"><button className="narration-play" onClick={() => toggleNarration(mapSelection)} disabled={!mapSelection} aria-label={t(playing && playingPoiId === mapSelection?.id ? 'stopNarration' : 'playNarration')}>{playing && playingPoiId === mapSelection?.id ? 'Ⅱ' : '▶'}</button><div className="narration-track"><strong>{mapSelection ? mapSelection.name : t('noPlaceSelected')}</strong><span><i className={playing && playingPoiId === mapSelection?.id ? 'track-playing' : ''} /></span></div><small>{t('audioVietnamese')}</small></div></section>
+                <section className="map-panel place-panel"><div className="map-panel-title"><span className="panel-icon">⌖</span><h2>{mapSelection ? t('placeInfo') : t('placeCount', { count: activeCampusPlaces.length })}</h2></div>{mapSelection ? <div className="map-selected-place"><span className="map-selected-category">{t(categoryTranslationKeys[mapSelection.category])}{mapSelection.walk !== '—' ? ` · ${mapSelection.walk}` : ''}</span><h3>{mapSelection.name}</h3><p>{mapSelection.description}</p><small><Icon name="pin" size={14} /> {mapSelection.location}</small><div className="poi-listener-stats"><span>♫ {poiListeningStats(mapSelection.id).heard} {listenerLabels().heard}</span><span><i /> {poiListeningStats(mapSelection.id).active} {listenerLabels().active}</span></div><div className="map-selected-actions"><button className="map-open-detail" onClick={() => setSelected(mapSelection)}>{t('details')}</button><a href={`https://www.google.com/maps/dir/?api=1&destination=${mapSelection.lat},${mapSelection.lng}`} target="_blank" rel="noreferrer">{t('directions')}</a><button className="map-reset-selection" onClick={() => { setMapSelection(null); setNarrationMessage(t('narrationIdle')) }}>{t('otherPlace')}</button></div></div> : activeCampusPlaces.length ? <><p className="map-select-hint">{t('selectPlace')}</p><div className="map-place-list">{activeCampusNearbyPlaces.map((place, index) => <button className="map-place-row" key={place.id} onClick={() => handleMapSelect(place)}><span className="map-place-number">{index + 1}</span><span className="map-place-copy"><strong>{place.name}</strong><small>{t(categoryTranslationKeys[place.category])} <i>·</i> {place.location}</small></span><Icon name="chevron" size={17} /></button>)}</div></> : <p className="map-select-hint">{t('noCoordinates')}</p>}</section>
                 <p className="map-coordinate-note">{t('coordinateNote', { count: activeCampusPlaces.length })}</p>
               </aside>
             </div>
@@ -634,7 +697,7 @@ function App() {
               {poiStatus === 'loading' ? <div className="poi-grid" aria-label={t('placesLoading')} aria-busy="true">{[1, 2, 3, 4].map((item) => <article className="poi-skeleton" key={item}><div className="skeleton-image" /><div className="skeleton-body"><i className="skeleton-line short" /><i className="skeleton-line title" /><i className="skeleton-line" /><i className="skeleton-line medium" /><div className="skeleton-footer"><i /><i /></div></div></article>)}</div> : poiStatus === 'error' ? <div className="error-state" role="alert"><span className="error-icon"><Icon name="map" size={22} /></span><div className="error-copy"><strong>{t('loadError')}</strong><p>{t('loadErrorCopy')}</p></div><button className="retry-button" onClick={retryLoadPlaces}><Icon name="arrow" size={15} /> {t('retry')}</button></div> : filteredPlaces.length > 0 ? <div className="poi-grid">{filteredPlaces.map((place) => <article className="poi-card" key={place.id}>
                 <button className="poi-image-button" onClick={() => setSelected(place)} aria-label={t('placeDetails', { name: place.name })}><img className="poi-image" src={place.image} alt="" /><span className="image-tag">{place.tag}</span></button>
                 <button className={`save-button ${saved.includes(place.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(place.id)} aria-label={saved.includes(place.id) ? t('removeSaved') : t('savePlace')}><Icon name="heart" size={18} /></button>
-                <div className="poi-info"><div className="poi-meta"><span>{t(categoryTranslationKeys[place.category])}</span>{place.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {place.rating}</span>}</div><button className="poi-title" onClick={() => setSelected(place)}>{place.name}</button><p className="poi-description">{place.description}</p><div className="poi-footer"><span><Icon name="pin" size={14} /> {displayDistance(place)}</span>{place.walk !== '—' && <><span className="footer-separator" /><span><Icon name="clock" size={14} /> {place.walk} đi bộ</span></>}<button onClick={() => setSelected(place)} aria-label={t('placeDetails', { name: place.name })}><Icon name="arrow" size={16} /></button></div></div>
+                <div className="poi-info"><div className="poi-meta"><span>{t(categoryTranslationKeys[place.category])}</span>{place.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {place.rating}</span>}</div><button className="poi-title" onClick={() => setSelected(place)}>{place.name}</button><p className="poi-description">{place.description}</p><div className="poi-listener-stats"><span>♫ {poiListeningStats(place.id).heard} {listenerLabels().heard}</span><span><i /> {poiListeningStats(place.id).active} {listenerLabels().active}</span></div><div className="poi-footer"><span><Icon name="pin" size={14} /> {displayDistance(place)}</span>{place.walk !== '—' && <><span className="footer-separator" /><span><Icon name="clock" size={14} /> {place.walk} đi bộ</span></>}<button onClick={() => setSelected(place)} aria-label={t('placeDetails', { name: place.name })}><Icon name="arrow" size={16} /></button></div></div>
               </article>)}</div> : <div className="empty-state"><span className="empty-icon"><Icon name={activeNav === 'Đã lưu' ? 'heart' : 'search'} size={24} /></span><strong>{activeNav === 'Đã lưu' ? t('noSaved') : t('noMatches')}</strong><p>{activeNav === 'Đã lưu' ? t('noSavedCopy') : t('noMatchesCopy')}</p></div>}
             </section>
           </>}
@@ -644,7 +707,7 @@ function App() {
 
       {qrOpen && <div className="modal-backdrop" role="presentation" onClick={() => setQrOpen(false)}><section className="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setQrOpen(false)} aria-label={t('close')}><Icon name="close" /></button><div className="qr-modal-heading"><span className="qr-modal-icon">▦</span><div><h2 id="qr-title">{t('qrTitle')}</h2><p>{t('qrDescription')}</p></div></div><video className="qr-video" ref={qrVideo} muted playsInline /><p className="qr-message" role="status">{qrMessage}</p><form className="qr-manual-form" onSubmit={(event) => { event.preventDefault(); const match = resolveQrPlace(qrCode, poiItems); if (match) { handleMapSelect(match); setQrOpen(false); setQrCode('') } else setQrMessage(t('qrNotFound')) }}><input value={qrCode} onChange={(event) => setQrCode(event.target.value)} placeholder={t('qrInput')} aria-label={t('qrInput')} /><button type="submit">{t('findPlace')}</button></form><div className="qr-place-options">{poiItems.map((place) => <button key={place.id} onClick={() => { handleMapSelect(place); setQrOpen(false) }}>{place.name}</button>)}</div></section></div>}
 
-      {selected && <div className="modal-backdrop" role="presentation" onClick={() => setSelected(null)}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setSelected(null)} aria-label={t('close')}><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" /><span className="image-tag">{selected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{t(categoryTranslationKeys[selected.category])}</span><span className="rating"><Icon name="star" size={13} /> {selected.rating}</span></div><h2 id="detail-title">{selected.name}</h2><p>{selected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {selected.location}<span>·</span>{displayDistance(selected)}</div><div className="audio-guide"><button className={`audio-play ${playing ? 'playing' : ''}`} onClick={() => setPlaying(!playing)} aria-label={t(playing ? 'stopNarration' : 'playNarration')}><Icon name={playing ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing ? t('narrationPlaying', { name: selected.name }) : t('narrationTitle')}</strong><small>{t('audioVietnamese')}</small></div><div className={`audio-wave ${playing ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => { setSelected(null); setActiveNav('Bản đồ') }}><Icon name="map" size={18} /> {t('directions')}</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? t('removeSaved') : t('savePlace')}</button></div></div></section></div>}
+      {selected && <div className="modal-backdrop" role="presentation" onClick={() => setSelected(null)}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setSelected(null)} aria-label={t('close')}><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" /><span className="image-tag">{selected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{t(categoryTranslationKeys[selected.category])}</span><span className="rating"><Icon name="star" size={13} /> {selected.rating}</span></div><h2 id="detail-title">{selected.name}</h2><p>{selected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {selected.location}<span>·</span>{displayDistance(selected)}</div><div className="poi-listener-stats"><span>♫ {poiListeningStats(selected.id).heard} {listenerLabels().heard}</span><span><i /> {poiListeningStats(selected.id).active} {listenerLabels().active}</span></div><div className="audio-guide"><button className={`audio-play ${playing && playingPoiId === selected.id ? 'playing' : ''}`} onClick={() => toggleNarration(selected)} aria-label={t(playing && playingPoiId === selected.id ? 'stopNarration' : 'playNarration')}><Icon name={playing && playingPoiId === selected.id ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing && playingPoiId === selected.id ? t('narrationPlaying', { name: selected.name }) : t('narrationTitle')}</strong><small>{t('audioVietnamese')}</small></div><div className={`audio-wave ${playing && playingPoiId === selected.id ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => { setSelected(null); setActiveNav('Bản đồ') }}><Icon name="map" size={18} /> {t('directions')}</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => toggleSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? t('removeSaved') : t('savePlace')}</button></div></div></section></div>}
 
     </div>
   )

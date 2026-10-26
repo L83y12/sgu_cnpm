@@ -70,6 +70,30 @@ backend's authoritative OpenAPI specification. Behavioral details stated in
 the project material are captured there; only details not specified by the
 material are marked for backend confirmation.
 
+### Local admin API
+
+The admin POI management screen has a small Node API for local development.
+Run it and Vite in separate terminals from the repository root:
+
+```sh
+npm run dev:api
+npm run dev
+```
+
+Open `/sgu_cnpm/admin`. The API creates `server/data/pois.json` and
+`server/data/admins.json`, and stores uploaded pictures in `server/uploads/`;
+these runtime files are ignored by Git. On the first admin dashboard load, the
+existing demo POIs are imported into the API store. New POIs start as drafts;
+use the row action to publish them to the guest map. The demo administrator is
+`admin@sgu.edu.vn` / `sguadmin2026`. The admin screen has no self-registration;
+configure the server account with `SGU_ADMIN_EMAIL` and `SGU_ADMIN_PASSWORD`.
+
+This is a local development backend, not a GitHub Pages deployment. To share
+admin changes with teammates or deploy them, host this Node API and its
+persistent data storage, set `VITE_API_BASE_URL` to the API origin, and set
+`SGU_ADMIN_EMAIL` and `SGU_ADMIN_PASSWORD` on the server. GitHub Pages serves
+only the frontend and cannot persist these API records by itself.
+
 ## Web UI collaboration
 
 - `src/app/` owns route configuration and the shared page layout.
