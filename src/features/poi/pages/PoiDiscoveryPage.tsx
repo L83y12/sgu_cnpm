@@ -7,11 +7,12 @@ import {
   useSearchParams,
 } from 'react-router-dom'
 import { Icon } from '../../../app/Icon'
+import { fallbackPoiImage } from '../../../assets/poiImage'
 import type { SguAppContext } from '../../../app/AppLayout'
 import { NotFoundPage } from '../../../app/NotFoundPage'
 import { reportListeningEnd, reportListeningStart } from '../../../analytics'
 import { translate } from '../../../i18n/translations'
-import { localizedPlace } from '../../../i18n/placeTranslations'
+import { localizedPlace, narrationLanguage } from '../../../i18n/placeTranslations'
 import {
   type DemoPlace,
   type DemoPlaceCategory,
@@ -21,7 +22,6 @@ type Category = 'Tất cả' | DemoPlaceCategory
 type SortOption = 'distance' | 'rating' | 'name'
 type Locale = SguAppContext['language']
 
-const categories: Category[] = ['Tất cả', 'Kiến trúc', 'Học tập', 'Ẩm thực', 'Không gian xanh', 'Thể thao']
 const sortOptions: SortOption[] = ['distance', 'rating', 'name']
 const minimumRatingOptions = [0, 4.5, 4.7, 4.8, 4.9]
 const categoryKeys: Record<Category, Parameters<typeof translate>[1]> = {
@@ -63,10 +63,15 @@ export function PoiDiscoveryPage() {
     saved,
     language,
     places: poiItems,
+    placesLoading,
+    placesError,
+    reloadPlaces,
+    analytics,
     userPosition,
     toggleSaved: updateSaved,
   } = useOutletContext<SguAppContext>()
   const { poiId } = useParams()
+  const categories: Category[] = ['Tất cả', ...new Set(poiItems.map((place) => place.category))]
   const selectedCategory = searchParams.get('category')
   const category = categories.find((item) => item === selectedCategory) ?? 'Tất cả'
   const query = searchParams.get('q') ?? ''
@@ -78,7 +83,7 @@ export function PoiDiscoveryPage() {
     : 0
   const demoError = searchParams.get('poiState') === 'error'
   const [playing, setPlaying] = useState(false)
-  const [poiStatus, setPoiStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const poiStatus = demoError || placesError ? 'error' : placesLoading ? 'loading' : 'success'
   const modalRef = useRef<HTMLElement>(null)
   const modalCloseRef = useRef<HTMLButtonElement>(null)
   const speakingPoiId = useRef<number | null>(null)
@@ -90,17 +95,6 @@ export function PoiDiscoveryPage() {
   const closePoi = useCallback(() => {
     navigate(`${activePath}${location.search}`)
   }, [activePath, location.search, navigate])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (demoError) {
-        setPoiStatus('error')
-      } else {
-        setPoiStatus('success')
-      }
-    }, 650)
-    return () => window.clearTimeout(timer)
-  }, [demoError])
 
   useEffect(() => {
     if (!selected) {
@@ -150,7 +144,7 @@ export function PoiDiscoveryPage() {
   }, [closePoi, selected])
 
   function retryLoadPlaces() {
-    setPoiStatus('loading')
+    reloadPlaces()
     setSearchParams((currentParams) => {
       const nextParams = new URLSearchParams(currentParams)
       nextParams.delete('poiState')
@@ -169,7 +163,7 @@ export function PoiDiscoveryPage() {
     }
     const copy = localizedPlace(selected, language)
     const utterance = new SpeechSynthesisUtterance(copy.narration || copy.description)
-    utterance.lang = language === 'en' ? 'en-US' : 'vi-VN'
+    utterance.lang = narrationLanguage(language)
     utterance.onend = () => {
       speakingPoiId.current = null
       setPlaying(false)
@@ -291,16 +285,16 @@ export function PoiDiscoveryPage() {
 
           <section className="places-section">
             <div className="section-heading"><div><div className="section-kicker">{translate(language, 'nearbyHeading')}</div><h2>{activeNav === 'Đã lưu' ? translate(language, 'savedHeading') : translate(language, 'discoveryHeading')}</h2><p>{activeNav === 'Đã lưu' ? translate(language, 'savedCount', { count: filteredPlaces.length }) : userPosition ? translate(language, 'distanceMode') : translate(language, 'nearbyCopy')}</p></div><button className="view-all" onClick={() => navigate('/map')}>{translate(language, 'viewMap')} <Icon name="arrow" size={16} /></button></div>
-            <div className="toolbar"><div className="category-list" role="group" aria-label={translate(language, 'filterCategories')}>{categories.map((item) => <button key={item} className={`category-chip ${category === item ? 'selected' : ''}`} onClick={() => updateFilter('category', item === 'Tất cả' ? '' : item)}>{item === 'Tất cả' && <span className="chip-dot" />}{translate(language, categoryKeys[item])}</button>)}</div><div className="filter-actions"><label className="search-box"><Icon name="search" size={17} /><input value={query} onChange={(event) => updateFilter('q', event.target.value)} placeholder={translate(language, 'search')} aria-label={translate(language, 'search')} />{query && <button aria-label={translate(language, 'clearSearch')} onClick={() => updateFilter('q', '')}><Icon name="close" size={15} /></button>}</label><details className="filter-menu"><summary className={`filter-button ${sortBy !== 'distance' || minimumRating > 0 ? 'has-filters' : ''}`} aria-label={translate(language, 'filterCategories')} title={translate(language, 'filterCategories')}><Icon name="sliders" size={17} /></summary><div className="filter-panel"><label className="filter-field"><span>{translate(language, 'sortBy')}</span><select aria-label={translate(language, 'sortBy')} value={sortBy} onChange={(event) => updateFilter('sort', event.target.value === 'distance' ? '' : event.target.value)}><option value="distance">{translate(language, 'nearest')}</option><option value="rating">{translate(language, 'highestRated')}</option><option value="name">{translate(language, 'nameAZ')}</option></select></label><label className="filter-field"><span>{translate(language, 'minimumRating')}</span><select aria-label={translate(language, 'minimumRating')} value={minimumRating} onChange={(event) => updateFilter('minRating', event.target.value === '0' ? '' : event.target.value)}><option value="0">{translate(language, 'allRatings')}</option><option value="4.5">4.5+</option><option value="4.7">4.7+</option><option value="4.8">4.8+</option><option value="4.9">4.9+</option></select></label><p className="filter-result-count">{translate(language, 'matchingPlaces', { count: filteredPlaces.length })}</p></div></details></div></div>
+            <div className="toolbar"><div className="category-list" role="group" aria-label={translate(language, 'filterCategories')}>{categories.map((item) => <button key={item} className={`category-chip ${category === item ? 'selected' : ''}`} onClick={() => updateFilter('category', item === 'Tất cả' ? '' : item)}>{item === 'Tất cả' && <span className="chip-dot" />}{categoryKeys[item] ? translate(language, categoryKeys[item]) : item}</button>)}</div><div className="filter-actions"><label className="search-box"><Icon name="search" size={17} /><input value={query} onChange={(event) => updateFilter('q', event.target.value)} placeholder={translate(language, 'search')} aria-label={translate(language, 'search')} />{query && <button aria-label={translate(language, 'clearSearch')} onClick={() => updateFilter('q', '')}><Icon name="close" size={15} /></button>}</label><details className="filter-menu"><summary className={`filter-button ${sortBy !== 'distance' || minimumRating > 0 ? 'has-filters' : ''}`} aria-label={translate(language, 'filterCategories')} title={translate(language, 'filterCategories')}><Icon name="sliders" size={17} /></summary><div className="filter-panel"><label className="filter-field"><span>{translate(language, 'sortBy')}</span><select aria-label={translate(language, 'sortBy')} value={sortBy} onChange={(event) => updateFilter('sort', event.target.value === 'distance' ? '' : event.target.value)}><option value="distance">{translate(language, 'nearest')}</option><option value="rating">{translate(language, 'highestRated')}</option><option value="name">{translate(language, 'nameAZ')}</option></select></label><label className="filter-field"><span>{translate(language, 'minimumRating')}</span><select aria-label={translate(language, 'minimumRating')} value={minimumRating} onChange={(event) => updateFilter('minRating', event.target.value === '0' ? '' : event.target.value)}><option value="0">{translate(language, 'allRatings')}</option><option value="4.5">4.5+</option><option value="4.7">4.7+</option><option value="4.8">4.8+</option><option value="4.9">4.9+</option></select></label><p className="filter-result-count">{translate(language, 'matchingPlaces', { count: filteredPlaces.length })}</p></div></details></div></div>
 
-            {poiStatus === 'loading' ? <div className="poi-grid" aria-label={translate(language, 'placesLoading')} aria-busy="true">{[1, 2, 3, 4].map((item) => <article className="poi-skeleton" key={item}><div className="skeleton-image" /><div className="skeleton-body"><i className="skeleton-line short" /><i className="skeleton-line title" /><i className="skeleton-line" /><i className="skeleton-line medium" /><div className="skeleton-footer"><i /><i /></div></div></article>)}</div> : poiStatus === 'error' ? <div className="error-state" role="alert"><span className="error-icon"><Icon name="map" size={22} /></span><div className="error-copy"><strong>{translate(language, 'loadError')}</strong><p>{translate(language, 'loadErrorCopy')}</p></div><button className="retry-button" onClick={retryLoadPlaces}><Icon name="arrow" size={15} /> {translate(language, 'retry')}</button></div> : filteredPlaces.length > 0 ? <div className="poi-grid">{filteredPlaces.map((place) => <article className="poi-card" key={place.id}>
-              <button className="poi-image-button" onClick={() => openPoi(place.id)} aria-label={translate(language, 'placeDetails', { name: localizedPlace(place, language).name })}><img className="poi-image" src={place.image} alt="" /><span className="image-tag">{localizedPlace(place, language).tag}</span></button>
+            {poiStatus === 'loading' ? <div className="poi-grid" aria-label={translate(language, 'placesLoading')} aria-busy="true">{[1, 2, 3, 4].map((item) => <article className="poi-skeleton" key={item}><div className="skeleton-image" /><div className="skeleton-body"><i className="skeleton-line short" /><i className="skeleton-line title" /><i className="skeleton-line" /><i className="skeleton-line medium" /><div className="skeleton-footer"><i /><i /></div></div></article>)}</div> : poiStatus === 'error' ? <div className="error-state" role="alert"><span className="error-icon"><Icon name="map" size={22} /></span><div className="error-copy"><strong>{translate(language, 'loadError')}</strong><p>{placesError || translate(language, 'loadErrorCopy')}</p></div><button className="retry-button" onClick={retryLoadPlaces}><Icon name="arrow" size={15} /> {translate(language, 'retry')}</button></div> : filteredPlaces.length > 0 ? <div className="poi-grid">{filteredPlaces.map((place) => <article className="poi-card" key={place.id}>
+              <button className="poi-image-button" onClick={() => openPoi(place.id)} aria-label={translate(language, 'placeDetails', { name: localizedPlace(place, language).name })}><img className="poi-image" src={place.image} alt="" onError={(event) => { event.currentTarget.src = fallbackPoiImage }} /><span className="image-tag">{localizedPlace(place, language).tag}</span></button>
               <button className={`save-button ${saved.includes(place.id) ? 'is-saved' : ''}`} onClick={() => updateSaved(place.id)} aria-label={saved.includes(place.id) ? translate(language, 'removeSaved') : translate(language, 'savePlace')}><Icon name="heart" size={18} /></button>
-              <div className="poi-info"><div className="poi-meta"><span>{translate(language, categoryKeys[place.category])}</span>{place.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {place.rating}</span>}</div><button className="poi-title" onClick={() => openPoi(place.id)}>{localizedPlace(place, language).name}</button><p className="poi-description">{localizedPlace(place, language).description}</p><div className="poi-footer"><span><Icon name="pin" size={14} /> {placeDistance(place, userPosition, language)}</span>{place.walk !== '—' && <><span className="footer-separator" /><span><Icon name="clock" size={14} /> {place.walk} {translate(language, 'walkLabel')}</span></>}<button onClick={() => openPoi(place.id)} aria-label={translate(language, 'placeDetails', { name: localizedPlace(place, language).name })}><Icon name="arrow" size={16} /></button></div></div>
+              <div className="poi-info"><div className="poi-meta"><span>{categoryKeys[place.category] ? translate(language, categoryKeys[place.category]) : place.category}</span>{place.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {place.rating}</span>}</div><button className="poi-title" onClick={() => openPoi(place.id)}>{localizedPlace(place, language).name}</button><p className="poi-description">{localizedPlace(place, language).description}</p><div className="poi-footer"><span><Icon name="pin" size={14} /> {placeDistance(place, userPosition, language)}</span><span className="poi-usage-counts" aria-label={`${translate(language, 'heardCount', { count: analytics.pois[String(place.id)]?.heard ?? 0 })}; ${translate(language, 'currentlyListening', { count: analytics.pois[String(place.id)]?.active ?? 0 })}`} title={`${translate(language, 'heardCount', { count: analytics.pois[String(place.id)]?.heard ?? 0 })}; ${translate(language, 'currentlyListening', { count: analytics.pois[String(place.id)]?.active ?? 0 })}`}>♫ {analytics.pois[String(place.id)]?.heard ?? 0} · ● {analytics.pois[String(place.id)]?.active ?? 0}</span>{place.walk !== '—' && <><span className="footer-separator" /><span><Icon name="clock" size={14} /> {place.walk} {translate(language, 'walkLabel')}</span></>}<button onClick={() => openPoi(place.id)} aria-label={translate(language, 'placeDetails', { name: localizedPlace(place, language).name })}><Icon name="arrow" size={16} /></button></div></div>
             </article>)}</div> : <div className="empty-state"><span className="empty-icon"><Icon name={activeNav === 'Đã lưu' ? 'heart' : 'search'} size={24} /></span><strong>{activeNav === 'Đã lưu' && saved.length === 0 ? translate(language, 'noSaved') : translate(language, 'noMatches')}</strong><p>{activeNav === 'Đã lưu' && saved.length === 0 ? translate(language, 'noSavedCopy') : translate(language, 'noMatchesCopy')}</p>{activeNav === 'Đã lưu' && saved.length === 0 ? <button className="clear-filters-button" onClick={() => navigate('/')}>{translate(language, 'discover')}</button> : hasActiveFilters && <button className="clear-filters-button" onClick={clearFilters}>{translate(language, 'clearFilters')}</button>}</div>}
           </section>
           <footer className="page-footer"><span>SGU Go <span className="footer-bullet">·</span> {translate(language, 'footer')}</span><span>{translate(language, 'madeAtSgu').split('♥')[0]}<span className="footer-heart">♥</span>{translate(language, 'madeAtSgu').split('♥')[1]}</span></footer>
-      {selected && localizedSelected && <div className="modal-backdrop" role="presentation" onClick={closePoi}><section ref={modalRef} className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button ref={modalCloseRef} className="modal-close" onClick={closePoi} aria-label={translate(language, 'close')}><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" /><span className="image-tag">{localizedSelected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{translate(language, categoryKeys[selected.category])}</span>{selected.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {selected.rating}</span>}</div><h2 id="detail-title">{localizedSelected.name}</h2><p>{localizedSelected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {localizedSelected.location}<span>·</span>{placeDistance(selected, userPosition, language)}</div><div className="audio-guide"><button className={`audio-play ${playing ? 'playing' : ''}`} onClick={toggleNarration} aria-label={translate(language, playing ? 'stopNarration' : 'playNarration')}><Icon name={playing ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing ? translate(language, 'narrationPlaying', { name: localizedSelected.name }) : translate(language, 'narrationIdle')}</strong><small>{translate(language, 'audioVietnamese')}</small></div><div className={`audio-wave ${playing ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => openPoiOnMap(selected.id)}><Icon name="map" size={18} /> {translate(language, 'openMap')}</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => updateSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? translate(language, 'saved') : translate(language, 'savePlace')}</button></div></div></section></div>}
+      {selected && localizedSelected && <div className="modal-backdrop" role="presentation" onClick={closePoi}><section ref={modalRef} className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button ref={modalCloseRef} className="modal-close" onClick={closePoi} aria-label={translate(language, 'close')}><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" onError={(event) => { event.currentTarget.src = fallbackPoiImage }} /><span className="image-tag">{localizedSelected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{categoryKeys[selected.category] ? translate(language, categoryKeys[selected.category]) : selected.category}</span>{selected.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {selected.rating}</span>}</div><h2 id="detail-title">{localizedSelected.name}</h2><p>{localizedSelected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {localizedSelected.location}<span>·</span>{placeDistance(selected, userPosition, language)}</div><p className="poi-detail-usage">{translate(language, 'heardCount', { count: analytics.pois[String(selected.id)]?.heard ?? 0 })} · {translate(language, 'currentlyListening', { count: analytics.pois[String(selected.id)]?.active ?? 0 })}</p><div className="audio-guide"><button className={`audio-play ${playing ? 'playing' : ''}`} onClick={toggleNarration} aria-label={translate(language, playing ? 'stopNarration' : 'playNarration')}><Icon name={playing ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing ? translate(language, 'narrationPlaying', { name: localizedSelected.name }) : translate(language, 'narrationIdle')}</strong><small>{translate(language, 'audioVietnamese')}</small></div><div className={`audio-wave ${playing ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => openPoiOnMap(selected.id)}><Icon name="map" size={18} /> {translate(language, 'openMap')}</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => updateSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? translate(language, 'saved') : translate(language, 'savePlace')}</button></div></div></section></div>}
     </>
   )
 }

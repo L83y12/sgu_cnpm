@@ -1,22 +1,7 @@
 import { useState } from 'react'
 import { AdminDashboard } from './AdminDashboard'
-import type { AdminPoi } from './AdminDashboard'
 import { AdminLogin } from './AdminLogin'
 import { clearAdminToken, getAdminToken } from './adminApi'
-import { demoPlaces } from '../poi/data/demoPlaces'
-
-const initialAdminPois: AdminPoi[] = demoPlaces.map((place) => ({
-  id: place.id,
-  name: place.name,
-  category: place.category,
-  description: place.description,
-  narration: place.narration,
-  location: place.location,
-  campusId: place.campusId,
-  lat: place.lat,
-  lng: place.lng,
-  image: place.image,
-}))
 
 export function AdminPage() {
   const [signedIn, setSignedIn] = useState(() => Boolean(getAdminToken()))
@@ -32,7 +17,7 @@ export function AdminPage() {
           <a className="admin-site-back" href={`${import.meta.env.BASE_URL}#/`}>Trang khách</a>
         </div>
       </header>
-      <main className="admin-site-main"><AdminDashboard places={initialAdminPois} /></main>
+      <main className="admin-site-main"><AdminDashboard /></main>
       <footer className="admin-site-footer">SGU Go <span>·</span> Hệ thống quản lý nội dung tham quan</footer>
     </div>
   )

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import sguBuilding from '../assets/sgu-building.png'
+import { resolvePoiImage } from '../assets/poiImage'
 import '../App.css'
-import { fetchAnalytics, sendHeartbeat } from '../analytics'
-import { localeOptions, translate, type Locale } from '../i18n/translations'
-import { demoPlaces, type DemoPlace, type DemoPlaceCategory } from '../features/poi/data/demoPlaces'
+import { fetchAnalytics, sendHeartbeat, type AnalyticsSnapshot } from '../analytics'
+import { fetchLocaleOptions, localeOptions, translate, type Locale, type LocaleOption } from '../i18n/translations'
+import type { DemoPlace } from '../features/poi/data/demoPlaces'
 import { fetchPublishedPois } from '../features/admin/adminApi'
 import { Icon } from './Icon'
 
@@ -20,14 +21,16 @@ export interface SguAppContext {
   saved: number[]
   language: Locale
   places: DemoPlace[]
+  placesLoading: boolean
+  placesError: string
+  reloadPlaces: () => void
+  analytics: AnalyticsSnapshot
   userPosition: { lat: number; lng: number } | null
   toggleSaved: (id: number) => void
   onLocate: (position: { lat: number; lng: number }) => void
 }
 
 const languageStorageKey = 'sgu-go-language'
-const categories: DemoPlaceCategory[] = ['Kiến trúc', 'Học tập', 'Ẩm thực', 'Không gian xanh', 'Thể thao']
-
 function getReturnPath(state: unknown): SectionPath | undefined {
   if (typeof state !== 'object' || state === null || !('returnTo' in state)) {
     return undefined
@@ -82,9 +85,13 @@ export function AppLayout() {
     const stored = window.localStorage.getItem(languageStorageKey)
     return localeOptions.find((option) => option.code === stored)?.code ?? 'vi'
   })
-  const [places, setPlaces] = useState(demoPlaces)
+  const [availableLanguages, setAvailableLanguages] = useState<LocaleOption[]>(localeOptions)
+  const [places, setPlaces] = useState<DemoPlace[]>([])
+  const [placesLoading, setPlacesLoading] = useState(true)
+  const [placesError, setPlacesError] = useState('')
+  const [placesVersion, setPlacesVersion] = useState(0)
+  const [analytics, setAnalytics] = useState<AnalyticsSnapshot>({ activeUsers: 0, pois: {} })
   const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null)
-  const [activeUsers, setActiveUsers] = useState(0)
   const returnPath = getReturnPath(state)
   const activePath = pathname.startsWith('/poi/')
     ? returnPath ?? '/'
@@ -108,13 +115,28 @@ export function AppLayout() {
   }, [language])
   useEffect(() => {
     let cancelled = false
+    void fetchLocaleOptions().then((options) => {
+      if (cancelled || !options.length) return
+      setAvailableLanguages(options)
+      const stored = window.localStorage.getItem(languageStorageKey)
+      if (stored && options.some((option) => option.code === stored)) {
+        setLanguage(stored)
+        document.title = translate(stored, 'pageTitle')
+      }
+    }).catch(() => { /* Use the bundled languages when the API is offline. */ })
+    return () => { cancelled = true }
+  }, [])
+  useEffect(() => {
+    let cancelled = false
     const refresh = async () => {
       await sendHeartbeat()
       try {
         const result = await fetchAnalytics()
-        if (!cancelled) setActiveUsers(result.activeUsers)
+        if (!cancelled) {
+          setAnalytics(result)
+        }
       } catch {
-        if (!cancelled) setActiveUsers(0)
+        if (!cancelled) setAnalytics({ activeUsers: 0, pois: {} })
       }
     }
     void refresh()
@@ -127,36 +149,42 @@ export function AppLayout() {
 
   useEffect(() => {
     let cancelled = false
-    void fetchPublishedPois().then((published) => {
+    setPlacesLoading(true)
+    setPlacesError('')
+    void fetchPublishedPois(language).then((published) => {
       if (cancelled) return
-      const additions: DemoPlace[] = published
-        .filter((poi) => !demoPlaces.some((place) => place.id === poi.id))
-        .flatMap((poi) => {
-          const category = categories.find((item) => item === poi.category)
-          if (!category) return []
-          return [{
-            id: poi.id,
-            name: poi.name,
-            category,
-            description: poi.description,
-            narration: poi.narration,
-            distance: 'Trong khuôn viên',
-            walk: '—',
-            rating: '—',
-            image: poi.image || sguBuilding,
-            tag: 'Địa điểm mới',
-            location: poi.location,
-            lat: Number(poi.lat) || 0,
-            lng: Number(poi.lng) || 0,
-            campusId: poi.campusId === 'campus-1' || poi.campusId === 'campus-2' ? poi.campusId : 'main',
-          }]
-        })
-      setPlaces([...demoPlaces, ...additions])
+      const databasePlaces: DemoPlace[] = published.map((poi) => ({
+        id: poi.id,
+        name: poi.name,
+        category: poi.category,
+        description: poi.description,
+        narration: poi.narration,
+        distance: 'Trong khuôn viên',
+        walk: '—',
+        rating: '—',
+        image: resolvePoiImage(poi.image) || sguBuilding,
+        tag: poi.category,
+        localized: poi.localized,
+        location: poi.location,
+        lat: poi.lat === null || poi.lat === undefined ? Number.NaN : Number(poi.lat),
+        lng: poi.lng === null || poi.lng === undefined ? Number.NaN : Number(poi.lng),
+        campusId: poi.campusId === 'campus-1' || poi.campusId === 'campus-2' ? poi.campusId : 'main',
+      }))
+      setPlaces(databasePlaces)
     }).catch(() => {
-      if (!cancelled) setPlaces(demoPlaces)
+      if (!cancelled) {
+        setPlaces([])
+        setPlacesError('Không tải được POI từ database. Hãy kiểm tra SQL Server và API.')
+      }
+    }).finally(() => {
+      if (!cancelled) setPlacesLoading(false)
     })
     return () => { cancelled = true }
-  }, [])
+  }, [language, placesVersion])
+
+  function reloadPlaces() {
+    setPlacesVersion((current) => current + 1)
+  }
 
   function toggleSaved(id: number) {
     setSaved((current) =>
@@ -172,6 +200,10 @@ export function AppLayout() {
     saved,
     language,
     places,
+    placesLoading,
+    placesError,
+    reloadPlaces,
+    analytics,
     userPosition,
     toggleSaved,
     onLocate: setUserPosition,
@@ -219,7 +251,7 @@ export function AppLayout() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb"><span>SGU Go</span><Icon name="chevron" size={14} /><strong>{translate(language, activePath === '/map' ? 'map' : activePath === '/saved' ? 'saved' : 'discover')}</strong></div>
-          <div className="top-actions"><span className="app-user-count" title="Người đang sử dụng ứng dụng"><i />{activeUsers} <span>{translate(language, 'appUsersActive')}</span></span><label className="language-select-label"><span className="visually-hidden">{translate(language, 'language')}</span><select className="language-select" value={language} onChange={(event) => setLanguage(event.target.value as Locale)} aria-label={translate(language, 'language')}>{localeOptions.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label><span className="top-divider" /><button className="help-button">{translate(language, 'help')}</button><button className="top-avatar" aria-label={translate(language, 'guest')}>G</button></div>
+          <div className="top-actions"><span className="app-user-count" title="Người đang sử dụng ứng dụng"><i />{analytics.activeUsers} <span>{translate(language, 'appUsersActive')}</span></span><label className="language-select-label"><span className="visually-hidden">{translate(language, 'language')}</span><select className="language-select" value={language} onChange={(event) => setLanguage(event.target.value as Locale)} aria-label={translate(language, 'language')}>{availableLanguages.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label><span className="top-divider" /><button className="help-button">{translate(language, 'help')}</button><button className="top-avatar" aria-label={translate(language, 'guest')}>G</button></div>
         </header>
         <div className="page-content">
           <Outlet context={outletContext} />

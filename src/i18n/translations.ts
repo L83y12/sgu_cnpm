@@ -1,4 +1,4 @@
-export type Locale = 'vi' | 'en' | 'ko' | 'ja' | 'zh'
+export type Locale = string
 
 const translations = {
   vi: {
@@ -52,7 +52,7 @@ const translations = {
     cameraReady: 'Camera đã sẵn sàng. Hướng mã QR vào giữa khung hình.',
     cameraPermission: 'Chưa cấp quyền camera. Bạn vẫn có thể nhập mã POI hoặc chọn địa điểm bên dưới.',
     qrNotFound: 'Chưa tìm thấy POI. Nhập số địa điểm, tên địa điểm, hoặc chọn bên dưới.',
-    category: 'Danh mục',
+    category: 'Danh mục', heardCount: '{count} lượt nghe', currentlyListening: '{count} đang nghe',
   },
   en: {
     pageTitle: 'SGU Go — Explore nearby',
@@ -105,7 +105,7 @@ const translations = {
     cameraReady: 'Camera ready. Point the QR code at the center of the frame.',
     cameraPermission: 'Camera access was not granted. You can still enter a POI code or choose a place below.',
     qrNotFound: 'POI not found. Enter a place number or name, or choose below.',
-    category: 'Category',
+    category: 'Category', heardCount: '{count} heard', currentlyListening: '{count} listening',
   },
   ko: {
     pageTitle: 'SGU Go — 주변 탐색',
@@ -158,7 +158,7 @@ const translations = {
     cameraReady: '카메라가 준비되었습니다. QR 코드를 프레임 중앙에 맞추세요.',
     cameraPermission: '카메라 권한이 없습니다. POI 코드를 입력하거나 아래에서 장소를 선택할 수 있습니다.',
     qrNotFound: 'POI를 찾을 수 없습니다. 장소 번호나 이름을 입력하거나 아래에서 선택하세요.',
-    category: '카테고리',
+    category: '카테고리', heardCount: '{count}회 들음', currentlyListening: '{count}명 청취 중',
   },
   ja: {
     pageTitle: 'SGU Go — 周辺を探索',
@@ -211,7 +211,7 @@ const translations = {
     cameraReady: 'カメラの準備ができました。QRコードを枠の中央に合わせてください。',
     cameraPermission: 'カメラが許可されていません。POIコードを入力するか、下から場所を選択できます。',
     qrNotFound: 'POIが見つかりません。場所番号か名前を入力するか、下から選択してください。',
-    category: 'カテゴリ',
+    category: 'カテゴリ', heardCount: '{count}回再生', currentlyListening: '{count}人が再生中',
   },
   zh: {
     pageTitle: 'SGU Go — 探索附近',
@@ -264,13 +264,18 @@ const translations = {
     cameraReady: '相机已就绪。请将二维码对准取景框中央。',
     cameraPermission: '未授予相机权限。你仍可输入 POI 编号或从下方选择地点。',
     qrNotFound: '未找到 POI。请输入地点编号或名称，或从下方选择。',
-    category: '类别',
+    category: '类别', heardCount: '已收听 {count} 次', currentlyListening: '{count} 人正在收听',
   },
 } as const
 
 export type TranslationKey = keyof typeof translations.vi
 
-export const localeOptions: { code: Locale; label: string }[] = [
+export type LocaleOption = { code: Locale; label: string }
+
+const dynamicBundles: Record<string, Partial<Record<TranslationKey, string>>> = {}
+const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+
+export const localeOptions: LocaleOption[] = [
   { code: 'vi', label: 'Tiếng Việt' },
   { code: 'en', label: 'English' },
   { code: 'ko', label: '한국어' },
@@ -278,8 +283,36 @@ export const localeOptions: { code: Locale; label: string }[] = [
   { code: 'zh', label: '中文' },
 ]
 
+export function createLocaleTranslationTemplate(): Record<string, string> {
+  return Object.fromEntries(Object.keys(translations.vi).map((key) => [key, '']))
+}
+
+export function setDynamicLocaleBundles(items: { code: string; label: string; translations: Record<string, unknown> }[]) {
+  for (const item of items) {
+    const bundle: Partial<Record<TranslationKey, string>> = {}
+    for (const [key, value] of Object.entries(item.translations)) {
+      if (typeof value === 'string' && value.trim()) bundle[key as TranslationKey] = value
+    }
+    dynamicBundles[item.code] = bundle
+  }
+}
+
+export async function fetchLocaleOptions(): Promise<LocaleOption[]> {
+  const response = await fetch(`${apiBase}/api/languages`)
+  if (!response.ok) throw new Error('Could not load language list.')
+  const body = await response.json() as { items: { code: string; label: string; translations: Record<string, unknown> }[] }
+  setDynamicLocaleBundles(body.items)
+  return body.items.map((item) => ({
+    code: item.code,
+    label: item.label === item.code
+      ? localeOptions.find((option) => option.code === item.code)?.label ?? item.code
+      : item.label,
+  }))
+}
+
 export function translate(locale: Locale, key: TranslationKey, values?: Record<string, string | number>): string {
-  let text: string = translations[locale][key]
+  const staticLocale = locale in translations ? locale as keyof typeof translations : 'vi'
+  let text: string = dynamicBundles[locale]?.[key] ?? translations[staticLocale][key] ?? translations.vi[key]
   if (values) {
     for (const [name, value] of Object.entries(values)) {
       text = text.replaceAll(`{${name}}`, String(value))

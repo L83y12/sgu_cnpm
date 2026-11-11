@@ -32,15 +32,16 @@ const english: Record<number, PlaceCopy> = {
   29: { name: 'Building C – Campus 2', description: 'Use the building directory to find a classroom or university office.', narration: 'This is Building C on Campus 2. Check the directory in the area to find the classroom or university office you want to visit.', tag: 'Campus building', location: 'SGU Campus 2' },
 }
 
-export function localizedPlace<T extends { id: number; name: string; description: string; narration?: string; tag: string; location: string; distance: string }>(place: T, locale: Locale): T {
+export function localizedPlace<T extends { id: number; name: string; description: string; narration?: string; tag: string; location: string; distance: string; localized?: boolean }>(place: T, locale: Locale): T {
   if (locale === 'vi') return place
+  if (place.localized) return place
   const copy = locale === 'en' ? english[place.id] : undefined
-  if (copy) return { ...place, ...copy, distance: copy.distance ?? (place.distance === 'Trong khuôn viên' ? 'On campus' : place.distance) } as T
+  if (copy) return { ...place, ...copy, narration: place.narration || copy.narration, distance: copy.distance ?? (place.distance === 'Trong khuôn viên' ? 'On campus' : place.distance) } as T
   if (locale === 'en') {
     return {
       ...place,
       description: `Explore ${place.name} on the SGU campus. Check the information posted at the location before your visit.`,
-      narration: `You are at ${place.name} on the SGU campus. Check the information posted at the location and enjoy your visit.`,
+      narration: place.narration || `You are at ${place.name} on the SGU campus. Check the information posted at the location and enjoy your visit.`,
       tag: 'Campus place',
       distance: place.distance === 'Trong khuôn viên' ? 'On campus' : place.distance,
     } as T
@@ -51,7 +52,7 @@ export function localizedPlace<T extends { id: number; name: string; description
 }
 
 export function narrationLanguage(locale: Locale): string {
-  return ({ vi: 'vi-VN', en: 'en-US', ko: 'ko-KR', ja: 'ja-JP', zh: 'zh-CN' })[locale]
+  return ({ vi: 'vi-VN', en: 'en-US', ko: 'ko-KR', ja: 'ja-JP', zh: 'zh-CN' } as Record<string, string>)[locale] ?? locale
 }
 
 export function localizedCampusAddress(campusId: string, locale: Locale, original: string): string {

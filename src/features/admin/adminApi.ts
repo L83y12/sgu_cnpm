@@ -25,12 +25,20 @@ export const adminApi = {
     return request<{ token: string; admin: { name: string; email: string } }>('/api/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) })
   },
   listPois() { return request<PoiPage>('/api/admin/pois?page=1&pageSize=100') },
-  bootstrapPois(items: AdminPoi[]) { return request<{ items: AdminPoi[] }>('/api/admin/pois/bootstrap', { method: 'POST', body: JSON.stringify({ items }) }) },
-  updatePoi(id: number, patch: { status: 'draft' | 'published' }) { return request<AdminPoi & { status: string }>(`/api/admin/pois/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }) },
+  saveLanguage(code: string, label: string, translations: Record<string, string>) {
+    return request<{ code: string; label: string }>('/api/admin/languages', {
+      method: 'PUT',
+      body: JSON.stringify({ code, label, translations }),
+    })
+  },
+  createPoi(poi: Omit<AdminPoi, 'id' | 'location'> & { location?: string; status?: 'draft' | 'published' }) {
+    return request<AdminPoi & { status: 'draft' | 'published' }>('/api/admin/pois', { method: 'POST', body: JSON.stringify(poi) })
+  },
+  updatePoi(id: number, patch: Partial<AdminPoi> & { status?: 'draft' | 'published' }) { return request<AdminPoi & { status: string }>(`/api/admin/pois/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }) },
 }
 
-export async function fetchPublishedPois() {
-  const response = await fetch(`${apiBase}/api/pois`)
+export async function fetchPublishedPois(language = 'vi') {
+  const response = await fetch(`${apiBase}/api/pois?lang=${encodeURIComponent(language)}`)
   if (!response.ok) throw new Error('Không tải được các địa điểm đã đăng.')
   return response.json() as Promise<(AdminPoi & { status: string })[]>
 }
