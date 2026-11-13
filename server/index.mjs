@@ -111,6 +111,7 @@ function toPoi(row) {
     lat: row.latitude === null ? null : Number(row.latitude),
     lng: row.longitude === null ? null : Number(row.longitude),
     image: row.image_url || '',
+    triggerRadius: row.trigger_radius ?? 100,
     localized: Boolean(row.localized_name || row.localized_description || row.localized_category || row.localized_location),
     status: row.active ? 'published' : 'draft',
   }
@@ -324,8 +325,9 @@ function validVisitorId(value) {
   return visitorId
 }
 
-async function updateActiveVisitor(visitorId, action, poiId = null) {
+async function updateActiveVisitor(visitorId, action, poiId = null, setPoi = false) {
   await pool.request()
+    .input('setPoi', sql.Bit, setPoi)
     .input('visitorId', sql.NVarChar(100), visitorId)
     .input('action', sql.VarChar(10), action)
     .input('poiId', sql.Int, poiId)
@@ -337,16 +339,17 @@ async function updateActiveVisitor(visitorId, action, poiId = null) {
         last_seen = SYSUTCDATETIME(),
         current_poi_id = CASE
           WHEN @action = 'start' THEN @poiId
+          WHEN @action = 'heartbeat' AND @setPoi = 1 THEN @poiId
           WHEN @action = 'end' AND current_poi_id = @poiId THEN NULL
           ELSE current_poi_id
         END
       WHEN NOT MATCHED THEN INSERT (visitor_id, last_seen, current_poi_id)
-        VALUES (@visitorId, SYSUTCDATETIME(), CASE WHEN @action = 'start' THEN @poiId ELSE NULL END);
+        VALUES (@visitorId, SYSUTCDATETIME(), CASE WHEN @action = 'start' OR (@action = 'heartbeat' AND @setPoi = 1) THEN @poiId ELSE NULL END);
     `)
 }
 
 async function removeExpiredVisitors() {
-  await pool.request().query("DELETE FROM dbo.VISITOR_SESSION WHERE last_seen < DATEADD(SECOND, -45, SYSUTCDATETIME())")
+  await pool.request().query("DELETE FROM dbo.VISITOR_SESSION WHERE last_seen < DATEADD(SECOND, -120, SYSUTCDATETIME())")
 }
 
 const server = createServer(async (request, response) => {
@@ -414,6 +417,13 @@ const server = createServer(async (request, response) => {
       const isStart = url.pathname.endsWith('/start')
       const isEnd = url.pathname.endsWith('/end')
       let poiId = null
+      // A heartbeat is authoritative about what the visitor is listening to right now
+      // (null = nothing). This self-heals sessions whose "end" call was never delivered.
+      const heartbeatReportsPoi = !isStart && !isEnd && 'poiId' in body
+      if (heartbeatReportsPoi && body.poiId !== null) {
+        poiId = Number(body.poiId)
+        if (!Number.isInteger(poiId) || poiId <= 0) return send(response, 400, { error: 'Mã POI không hợp lệ.' })
+      }
       if (isStart || isEnd) {
         poiId = Number(body.poiId)
         if (!Number.isInteger(poiId) || poiId <= 0) return send(response, 400, { error: 'Mã POI không hợp lệ.' })
@@ -424,8 +434,10 @@ const server = createServer(async (request, response) => {
           .query('SELECT id FROM dbo.POI WHERE id = @poiId')
         if (!poi.recordset.length) return send(response, 404, { error: 'Không tìm thấy địa điểm.' })
       }
-      await updateActiveVisitor(visitorId, isStart ? 'start' : isEnd ? 'end' : 'heartbeat', poiId)
-      if (isStart) {
+      await updateActiveVisitor(visitorId, isStart ? 'start' : isEnd ? 'end' : 'heartbeat', poiId, heartbeatReportsPoi)
+      // Previews (visitor is not within range of the place) show as "listening"
+      // but are not counted in the "heard" total.
+      if (isStart && body.preview !== true) {
         await pool.request()
           .input('poiId', sql.Int, poiId)
           .input('visitorId', sql.NVarChar(100), visitorId)
@@ -480,7 +492,7 @@ const server = createServer(async (request, response) => {
             COALESCE(localized.translated_description, api.description) AS description,
             COALESCE(localized.translated_text, api.narration, api.description) AS narration,
             COALESCE(localized.translated_location, api.location) AS location,
-            api.campus_id, api.latitude, api.longitude, api.image_url, api.active
+            api.campus_id, api.latitude, api.longitude, api.trigger_radius, api.image_url, api.active
           FROM dbo.V_POI_API AS api
           LEFT JOIN dbo.POI_LOCALIZATION AS localized
             ON localized.poi_id = api.id AND localized.lang = @language

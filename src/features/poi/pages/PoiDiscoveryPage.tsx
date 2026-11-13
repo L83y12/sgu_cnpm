@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   useLocation,
   useNavigate,
@@ -10,9 +10,8 @@ import { Icon } from '../../../app/Icon'
 import { fallbackPoiImage } from '../../../assets/poiImage'
 import type { SguAppContext } from '../../../app/AppLayout'
 import { NotFoundPage } from '../../../app/NotFoundPage'
-import { reportListeningEnd, reportListeningStart } from '../../../analytics'
 import { translate } from '../../../i18n/translations'
-import { localizedPlace, narrationLanguage } from '../../../i18n/placeTranslations'
+import { localizedPlace } from '../../../i18n/placeTranslations'
 import {
   type DemoPlace,
   type DemoPlaceCategory,
@@ -68,6 +67,10 @@ export function PoiDiscoveryPage() {
     reloadPlaces,
     analytics,
     userPosition,
+    narration,
+    playNarration,
+    stopNarration,
+    isNearPlace,
     toggleSaved: updateSaved,
   } = useOutletContext<SguAppContext>()
   const { poiId } = useParams()
@@ -82,13 +85,18 @@ export function PoiDiscoveryPage() {
     ? selectedMinimumRating
     : 0
   const demoError = searchParams.get('poiState') === 'error'
-  const [playing, setPlaying] = useState(false)
   const poiStatus = demoError || placesError ? 'error' : placesLoading ? 'loading' : 'success'
   const modalRef = useRef<HTMLElement>(null)
   const modalCloseRef = useRef<HTMLButtonElement>(null)
-  const speakingPoiId = useRef<number | null>(null)
   const selected = poiId ? poiItems.find((place) => String(place.id) === poiId) : undefined
   const localizedSelected = selected ? localizedPlace(selected, language) : undefined
+  const playing = Boolean(selected) && narration.playing && narration.poiId === selected?.id
+  const selectedInRange = selected ? isNearPlace(selected.id) : false
+  const audioNote = selectedInRange
+    ? translate(language, 'inRangeNote')
+    : userPosition
+      ? translate(language, 'previewNote')
+      : translate(language, 'gpsNeeded')
   const focusedPoiId = activeNav === 'Bản đồ' ? searchParams.get('focus') : null
   const focusedPlace = poiItems.find((place) => String(place.id) === focusedPoiId)
 
@@ -152,39 +160,12 @@ export function PoiDiscoveryPage() {
     }, { replace: true })
   }
 
+  // Outside the place's range the same button plays a preview that is not counted as "heard".
   function toggleNarration() {
-    if (!selected || !('speechSynthesis' in window)) return
-    if (playing) {
-      window.speechSynthesis.cancel()
-      void reportListeningEnd(selected.id)
-      speakingPoiId.current = null
-      setPlaying(false)
-      return
-    }
-    const copy = localizedPlace(selected, language)
-    const utterance = new SpeechSynthesisUtterance(copy.narration || copy.description)
-    utterance.lang = narrationLanguage(language)
-    utterance.onend = () => {
-      speakingPoiId.current = null
-      setPlaying(false)
-      void reportListeningEnd(selected.id)
-    }
-    utterance.onerror = () => {
-      speakingPoiId.current = null
-      setPlaying(false)
-      void reportListeningEnd(selected.id)
-    }
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(utterance)
-    speakingPoiId.current = selected.id
-    setPlaying(true)
-    void reportListeningStart(selected.id)
+    if (!selected) return
+    if (playing) stopNarration()
+    else playNarration(selected.id)
   }
-
-  useEffect(() => () => {
-    window.speechSynthesis?.cancel()
-    if (speakingPoiId.current !== null) void reportListeningEnd(speakingPoiId.current)
-  }, [])
 
   const filteredPlaces = useMemo(() => {
     const matches = poiItems.filter((place) => {
@@ -276,7 +257,7 @@ export function PoiDiscoveryPage() {
             <div className="map-road road-one" /><div className="map-road road-two" /><div className="map-road road-three" />
             <span className="map-label map-label-one">AN DƯƠNG VƯƠNG</span><span className="map-label map-label-two">NGUYỄN TRÃI</span><span className="map-label map-label-three">KHUÔN VIÊN SGU</span>
             <div className="map-building building-one" /><div className="map-building building-two" /><div className="map-building building-three" /><div className="map-park"><span>🌿</span></div>
-            <button className={`map-pin pin-a ${focusedPoiId === '1' ? 'is-focused' : ''}`} onClick={() => openPoi(1)} aria-pressed={focusedPoiId === '1'} aria-label={translate(language, 'placeDetails', { name: poiItems.find((place) => place.id === 1)?.name ?? '' })}><span>1</span><i /></button><button className={`map-pin pin-b ${focusedPoiId === '2' ? 'is-focused' : ''}`} onClick={() => openPoi(2)} aria-pressed={focusedPoiId === '2'} aria-label={translate(language, 'placeDetails', { name: poiItems.find((place) => place.id === 2)?.name ?? '' })}><span>2</span><i /></button><button className={`map-pin pin-c ${focusedPoiId === '5' ? 'is-focused' : ''}`} onClick={() => openPoi(5)} aria-pressed={focusedPoiId === '5'} aria-label={translate(language, 'placeDetails', { name: poiItems.find((place) => place.id === 5)?.name ?? '' })}><span>3</span><i /></button><button className={`map-pin pin-d ${focusedPoiId === '6' ? 'is-focused' : ''}`} onClick={() => openPoi(6)} aria-pressed={focusedPoiId === '6'} aria-label={translate(language, 'placeDetails', { name: poiItems.find((place) => place.id === 6)?.name ?? '' })}><span>4</span><i /></button>
+            {poiItems.slice(0, 4).map((place, index) => <button key={place.id} className={`map-pin ${['pin-a', 'pin-b', 'pin-c', 'pin-d'][index]} ${focusedPoiId === String(place.id) ? 'is-focused' : ''}`} onClick={() => openPoi(place.id)} aria-pressed={focusedPoiId === String(place.id)} aria-label={translate(language, 'placeDetails', { name: place.name })}><span>{index + 1}</span><i /></button>)}
             {focusedPlace && <div className="map-focus-notice" aria-live="polite"><span><Icon name="pin" size={14} /> {translate(language, 'placeInfo')}: {focusedPlace.name}</span><button onClick={() => setSearchParams((currentParams) => { const nextParams = new URLSearchParams(currentParams); nextParams.delete('focus'); return nextParams }, { replace: true })} aria-label={translate(language, 'close')}><Icon name="close" size={14} /></button></div>}
             <div className="map-you"><span /><small>{translate(language, 'currentLocation')}</small></div>
             <div className="map-overlay-card"><span className="mini-map-icon"><Icon name="map" size={19} /></span><div><strong>{translate(language, 'nearby')}</strong><small>{translate(language, 'placeCount', { count: poiItems.length })}</small></div><button onClick={() => navigate('/map')} aria-label={translate(language, 'openMap')}><Icon name="arrow" size={18} /></button></div>
@@ -294,7 +275,7 @@ export function PoiDiscoveryPage() {
             </article>)}</div> : <div className="empty-state"><span className="empty-icon"><Icon name={activeNav === 'Đã lưu' ? 'heart' : 'search'} size={24} /></span><strong>{activeNav === 'Đã lưu' && saved.length === 0 ? translate(language, 'noSaved') : translate(language, 'noMatches')}</strong><p>{activeNav === 'Đã lưu' && saved.length === 0 ? translate(language, 'noSavedCopy') : translate(language, 'noMatchesCopy')}</p>{activeNav === 'Đã lưu' && saved.length === 0 ? <button className="clear-filters-button" onClick={() => navigate('/')}>{translate(language, 'discover')}</button> : hasActiveFilters && <button className="clear-filters-button" onClick={clearFilters}>{translate(language, 'clearFilters')}</button>}</div>}
           </section>
           <footer className="page-footer"><span>SGU Go <span className="footer-bullet">·</span> {translate(language, 'footer')}</span><span>{translate(language, 'madeAtSgu').split('♥')[0]}<span className="footer-heart">♥</span>{translate(language, 'madeAtSgu').split('♥')[1]}</span></footer>
-      {selected && localizedSelected && <div className="modal-backdrop" role="presentation" onClick={closePoi}><section ref={modalRef} className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button ref={modalCloseRef} className="modal-close" onClick={closePoi} aria-label={translate(language, 'close')}><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" onError={(event) => { event.currentTarget.src = fallbackPoiImage }} /><span className="image-tag">{localizedSelected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{categoryKeys[selected.category] ? translate(language, categoryKeys[selected.category]) : selected.category}</span>{selected.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {selected.rating}</span>}</div><h2 id="detail-title">{localizedSelected.name}</h2><p>{localizedSelected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {localizedSelected.location}<span>·</span>{placeDistance(selected, userPosition, language)}</div><p className="poi-detail-usage">{translate(language, 'heardCount', { count: analytics.pois[String(selected.id)]?.heard ?? 0 })} · {translate(language, 'currentlyListening', { count: analytics.pois[String(selected.id)]?.active ?? 0 })}</p><div className="audio-guide"><button className={`audio-play ${playing ? 'playing' : ''}`} onClick={toggleNarration} aria-label={translate(language, playing ? 'stopNarration' : 'playNarration')}><Icon name={playing ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing ? translate(language, 'narrationPlaying', { name: localizedSelected.name }) : translate(language, 'narrationIdle')}</strong><small>{translate(language, 'audioVietnamese')}</small></div><div className={`audio-wave ${playing ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => openPoiOnMap(selected.id)}><Icon name="map" size={18} /> {translate(language, 'openMap')}</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => updateSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? translate(language, 'saved') : translate(language, 'savePlace')}</button></div></div></section></div>}
+      {selected && localizedSelected && <div className="modal-backdrop" role="presentation" onClick={closePoi}><section ref={modalRef} className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}><button ref={modalCloseRef} className="modal-close" onClick={closePoi} aria-label={translate(language, 'close')}><Icon name="close" /></button><div className="detail-image-wrap"><img src={selected.image} alt="" onError={(event) => { event.currentTarget.src = fallbackPoiImage }} /><span className="image-tag">{localizedSelected.tag}</span></div><div className="detail-content"><div className="poi-meta"><span>{categoryKeys[selected.category] ? translate(language, categoryKeys[selected.category]) : selected.category}</span>{selected.rating !== '—' && <span className="rating"><Icon name="star" size={13} /> {selected.rating}</span>}</div><h2 id="detail-title">{localizedSelected.name}</h2><p>{localizedSelected.description}</p><div className="detail-location"><Icon name="pin" size={17} /> {localizedSelected.location}<span>·</span>{placeDistance(selected, userPosition, language)}</div><p className="poi-detail-usage">{translate(language, 'heardCount', { count: analytics.pois[String(selected.id)]?.heard ?? 0 })} · {translate(language, 'currentlyListening', { count: analytics.pois[String(selected.id)]?.active ?? 0 })}</p><div className="audio-guide"><button className={`audio-play ${playing ? 'playing' : ''}`} onClick={toggleNarration} aria-label={playing ? translate(language, 'stopNarration') : selectedInRange ? translate(language, 'playNarration') : translate(language, 'previewListen')}><Icon name={playing ? 'headphones' : 'play'} size={18} /></button><div className="audio-copy"><strong>{playing ? translate(language, 'narrationPlaying', { name: localizedSelected.name }) : translate(language, 'narrationIdle')}</strong><small>{audioNote}</small></div><div className={`audio-wave ${playing ? 'wave-playing' : ''}`}><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /><i /></div></div><div className="detail-actions"><button className="primary-action" onClick={() => openPoiOnMap(selected.id)}><Icon name="map" size={18} /> {translate(language, 'openMap')}</button><button className={`detail-save ${saved.includes(selected.id) ? 'is-saved' : ''}`} onClick={() => updateSaved(selected.id)}><Icon name="heart" size={18} /> {saved.includes(selected.id) ? translate(language, 'saved') : translate(language, 'savePlace')}</button></div></div></section></div>}
     </>
   )
 }

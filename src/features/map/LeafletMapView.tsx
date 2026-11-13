@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { translate, type Locale, type TranslationKey } from '../../i18n/translations'
 
 export type MapPoi = {
@@ -22,6 +22,8 @@ type LeafletCircleMarker = {
   addTo: (map: LeafletMap) => LeafletCircleMarker
   bindPopup: (content: HTMLElement | string) => LeafletCircleMarker
   setLatLng: (position: LatLng) => LeafletCircleMarker
+  setRadius: (radius: number) => LeafletCircleMarker
+  setPopupContent: (content: string) => LeafletCircleMarker
   openPopup: () => LeafletCircleMarker
 }
 type LeafletMap = {
@@ -36,6 +38,7 @@ type LeafletApi = {
   tileLayer: (url: string, options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
   marker: (position: LatLng, options?: Record<string, unknown>) => LeafletMarker
   circleMarker: (position: LatLng, options?: Record<string, unknown>) => LeafletCircleMarker
+  circle: (position: LatLng, options?: Record<string, unknown>) => LeafletCircleMarker
   divIcon: (options: Record<string, unknown>) => unknown
   control: {
     attribution: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
@@ -51,6 +54,12 @@ const markerIcons: Record<string, string> = {
   'Thể thao': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 3 3.5 5.5-2 6.5h-6L5 9m10.5-.5L21 9m-7.5 6 4 5m-6-5-5 5"/></svg>',
   default: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>',
 }
+
+// POI categories come from the database in English; the icon sets are keyed by the original names.
+const categoryAliases: Record<string, string> = {
+  Architecture: 'Kiến trúc', Study: 'Học tập', Food: 'Ẩm thực', Sports: 'Thể thao', 'Green spaces': 'Không gian xanh',
+}
+const canonicalCategory = (category: string) => categoryAliases[category] ?? category
 
 const markerClasses: Record<string, string> = {
   'Kiến trúc': 'architecture',
@@ -115,7 +124,8 @@ function makeInfoContent(place: MapPoi, language: Locale) {
   const title = document.createElement('strong')
   title.textContent = place.name
   const category = document.createElement('span')
-  category.textContent = `${translate(language, categoryTranslationKeys[place.category] ?? 'category')} · ${place.location}`
+  const categoryKey = categoryTranslationKeys[canonicalCategory(place.category)]
+  category.textContent = `${categoryKey ? translate(language, categoryKey) : place.category} · ${place.location}`
   const directions = document.createElement('a')
   directions.href = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`
   directions.target = '_blank'
@@ -125,25 +135,29 @@ function makeInfoContent(place: MapPoi, language: Locale) {
   return content
 }
 
-export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center, language, onLocate }: {
+export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center, language, userPosition, userAccuracy, tracking, geoMessage, onToggleLocate }: {
   places: readonly MapPoi[]
   selectedPlaceId: number | null
   onSelectPlace: (place: MapPoi) => void
   center: LatLng
   language: Locale
-  onLocate: (position: { lat: number; lng: number }) => void
+  userPosition: { lat: number; lng: number } | null
+  userAccuracy: number | null
+  tracking: boolean
+  geoMessage: string
+  onToggleLocate: () => void
 }) {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<LeafletMap | null>(null)
   const markers = useRef(new Map<number, LeafletMarker>())
   const userMarker = useRef<LeafletCircleMarker | null>(null)
-  const userPosition = useRef<LatLng | null>(null)
-  const watchId = useRef<number | null>(null)
+  const accuracyCircle = useRef<LeafletCircleMarker | null>(null)
+  const centeredOnUser = useRef(false)
+  const syncUserRef = useRef<() => void>(() => {})
   const languageRef = useRef(language)
   const onSelectPlaceRef = useRef(onSelectPlace)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [message, setMessage] = useState('')
-  const [tracking, setTracking] = useState(false)
 
   useEffect(() => {
     languageRef.current = language
@@ -170,10 +184,10 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
       L.control.scale({ imperial: false }).addTo(map)
 
       places.forEach((place) => {
-        const markerClass = markerClasses[place.category] ?? 'default'
+        const markerClass = markerClasses[canonicalCategory(place.category)] ?? 'default'
         const icon = L.divIcon({
           className: `leaflet-poi-icon leaflet-poi-icon--${markerClass}`,
-          html: `<span><b>${markerIcons[place.category] ?? markerIcons.default}</b></span>`,
+          html: `<span><b>${markerIcons[canonicalCategory(place.category)] ?? markerIcons.default}</b></span>`,
           iconSize: [38, 44],
           iconAnchor: [19, 42],
           popupAnchor: [0, -38],
@@ -184,16 +198,8 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
           .on('click', () => onSelectPlaceRef.current(place))
         activeMarkers.set(place.id, marker)
       })
-      if (userPosition.current) {
-        userMarker.current = L.circleMarker(userPosition.current, {
-          radius: 8,
-          color: '#fff',
-          weight: 4,
-          fillColor: '#4285f4',
-          fillOpacity: 1,
-        }).addTo(map).bindPopup(translate(languageRef.current, 'currentLocation'))
-      }
       setStatus('ready')
+      syncUserRef.current()
     }).catch(() => {
       if (cancelled) return
       setMessage(translate(languageRef.current, 'mapLoadError'))
@@ -205,13 +211,10 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
       if (mapInstance.current === activeMap) mapInstance.current = null
       activeMarkers.clear()
       userMarker.current = null
+      accuracyCircle.current = null
       activeMap?.remove()
     }
   }, [center, places])
-
-  useEffect(() => () => {
-    if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current)
-  }, [])
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -228,53 +231,44 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
     markers.current.get(place.id)?.openPopup()
   }, [places, selectedPlaceId, status])
 
-  function locateMe() {
-    if (watchId.current !== null) {
-      navigator.geolocation.clearWatch(watchId.current)
-      watchId.current = null
-      setTracking(false)
-      setMessage('')
+  // Draw (or move) the visitor's marker and accuracy circle. The position itself is
+  // tracked by the app shell, so it keeps updating while other pages are open.
+  const syncUserMarker = useCallback(() => {
+    const map = mapInstance.current
+    const L = window.L
+    if (!map || !L) return
+    if (!userPosition) {
+      if (userMarker.current) map.removeLayer(userMarker.current)
+      if (accuracyCircle.current) map.removeLayer(accuracyCircle.current)
+      userMarker.current = null
+      accuracyCircle.current = null
       return
     }
-    if (!window.isSecureContext) {
-      setMessage(translate(language, 'geoSecureContext'))
-      return
+    const point: LatLng = [userPosition.lat, userPosition.lng]
+    const label = userAccuracy === null
+      ? translate(language, 'currentLocation')
+      : `${translate(language, 'currentLocation')} · ${translate(language, 'accuracy', { meters: Math.round(userAccuracy) })}`
+    if (userAccuracy !== null) {
+      if (accuracyCircle.current) accuracyCircle.current.setLatLng(point).setRadius(userAccuracy)
+      else accuracyCircle.current = L.circle(point, { radius: userAccuracy, color: '#4285f4', weight: 1, fillColor: '#4285f4', fillOpacity: 0.12, interactive: false }).addTo(map)
     }
-    if (!navigator.geolocation) {
-      setMessage(translate(language, 'geoUnsupported'))
-      return
+    if (userMarker.current) {
+      userMarker.current.setLatLng(point).setPopupContent(label)
+    } else {
+      userMarker.current = L.circleMarker(point, { radius: 8, color: '#fff', weight: 4, fillColor: '#4285f4', fillOpacity: 1 })
+        .addTo(map)
+        .bindPopup(label)
     }
-    setMessage('')
-    watchId.current = navigator.geolocation.watchPosition((position) => {
-      const map = mapInstance.current
-      const currentPosition: LatLng = [position.coords.latitude, position.coords.longitude]
-      userPosition.current = currentPosition
-      onLocate({ lat: position.coords.latitude, lng: position.coords.longitude })
-      if (!map || !window.L) return
-      if (userMarker.current) {
-        userMarker.current.setLatLng(currentPosition).openPopup()
-      } else {
-        userMarker.current = window.L.circleMarker(currentPosition, {
-          radius: 8,
-          color: '#fff',
-          weight: 4,
-          fillColor: '#4285f4',
-          fillOpacity: 1,
-        }).addTo(map).bindPopup(translate(language, 'currentLocation')).openPopup()
-      }
-      map.panTo(currentPosition)
-      map.setZoom(18)
-      setMessage('')
-    }, (error) => {
-      if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current)
-      watchId.current = null
-      setTracking(false)
-      setMessage(error.code === error.PERMISSION_DENIED
-        ? translate(language, 'geoPermission')
-        : translate(language, 'geoError'))
-    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 })
-    setTracking(true)
-  }
+    if (!centeredOnUser.current) {
+      centeredOnUser.current = true
+      map.setView(point, 18)
+      userMarker.current.openPopup()
+    }
+  }, [language, userAccuracy, userPosition])
+
+  useEffect(() => { syncUserRef.current = syncUserMarker }, [syncUserMarker])
+  useEffect(() => { if (tracking) centeredOnUser.current = false }, [tracking])
+  useEffect(() => { if (status === 'ready') syncUserMarker() }, [status, syncUserMarker, tracking])
 
   return <div className="leaflet-map-shell">
     <div className="leaflet-map-canvas" ref={mapElement} aria-label={translate(language, 'mapTitle')} />
@@ -284,7 +278,7 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
       {status === 'error' && <p>{message}</p>}
       {status === 'error' && <button onClick={() => window.location.reload()}>{translate(language, 'retry')}</button>}
     </div>}
-    <button className={`leaflet-map-locate${tracking ? ' is-tracking' : ''}`} onClick={locateMe} aria-label={translate(language, tracking ? 'stopTracking' : 'locateMeAria')} aria-pressed={tracking}>⌖ <span>{translate(language, tracking ? 'geoTracking' : 'locateMe')}</span></button>
-    {message && status === 'ready' && <div className="leaflet-map-message" role="status">{message}</div>}
+    <button className={`leaflet-map-locate${tracking ? ' is-tracking' : ''}`} onClick={onToggleLocate} aria-label={translate(language, tracking ? 'stopTracking' : 'locateMeAria')} aria-pressed={tracking}>⌖ <span>{translate(language, tracking ? 'geoTracking' : 'locateMe')}</span></button>
+    {geoMessage && status === 'ready' && <div className="leaflet-map-message" role="status">{geoMessage}</div>}
   </div>
 }

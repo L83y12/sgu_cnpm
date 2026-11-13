@@ -16,6 +16,7 @@ export type AdminPoi = {
   lat?: number
   lng?: number
   image?: string
+  triggerRadius?: number
   localized?: boolean
   localizations?: Record<string, { name?: string; description?: string; category?: string; location?: string; narration?: string }>
 }

@@ -25,7 +25,7 @@ function distanceBetween(first: { lat: number; lng: number }, second: { lat: num
 }
 
 export function MapPage() {
-  const { language, places, onLocate, userPosition } = useOutletContext<SguAppContext>()
+  const { language, places, userPosition, userAccuracy, tracking, geoMessage, toggleLocate } = useOutletContext<SguAppContext>()
   const [searchParams, setSearchParams] = useSearchParams()
   const [campusId, setCampusId] = useState<CampusId>('main')
   const campus = campuses.find((item) => item.id === campusId) ?? campuses[0]
@@ -39,10 +39,11 @@ export function MapPage() {
       location: place.location,
       lat: place.lat,
       lng: place.lng,
-    }))
-    .sort((first, second) => userPosition
-      ? distanceBetween(userPosition, first) - distanceBetween(userPosition, second)
-      : 0), [campusId, places, userPosition])
+    })), [campusId, places])
+  // Sorting by distance only reorders the side list; it must not rebuild the map markers.
+  const listPlaces = useMemo(() => userPosition
+    ? [...mapPlaces].sort((first, second) => distanceBetween(userPosition, first) - distanceBetween(userPosition, second))
+    : mapPlaces, [mapPlaces, userPosition])
   const selectedPlaceId = Number(searchParams.get('focus')) || null
 
   function selectPlace(place: MapPoi) {
@@ -91,7 +92,11 @@ export function MapPage() {
             onSelectPlace={selectPlace}
             center={campus.center}
             language={language}
-            onLocate={onLocate}
+            userPosition={userPosition}
+            userAccuracy={userAccuracy}
+            tracking={tracking}
+            geoMessage={geoMessage}
+            onToggleLocate={toggleLocate}
           />
         </div>
         <aside className="map-results">
@@ -101,7 +106,7 @@ export function MapPage() {
           </div>
           {mapPlaces.length ? (
             <div className="map-place-list">
-              {mapPlaces.map((place, index) => (
+              {listPlaces.map((place, index) => (
                 <button className="map-place-row" key={place.id} onClick={() => selectPlace(place)}>
                   <span className="map-place-number">{index + 1}</span>
                   <span className="map-place-copy"><strong>{place.name}</strong><small>{place.category}<i>·</i>{place.location}</small></span>

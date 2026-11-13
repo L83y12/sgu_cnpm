@@ -284,3 +284,24 @@ h1, h2, p { margin: 0; }
 .qr-place-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .qr-place-options button { border: 1px solid #e2e9ed; border-radius: 18px; padding: 6px 9px; color: #667984; background: #fff; font-size: 8px; cursor: pointer; }
 .qr-place-options button:hover { border-color: #9ec5d7; color: #347b9d; background: #f4fafc; }
+
+/* QR share, narration dock and geofence prompt */
+.qr-button { border: 1px solid #d7e0d6; background: #fff; color: #36453d; border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.qr-button:hover { background: #f1f5ef; }
+.share-qr-dialog { max-width: 380px; padding: 0; }
+.share-qr-body { display: grid; gap: 12px; padding: 28px 24px 24px; justify-items: center; text-align: center; }
+.share-qr-body h2 { margin: 0; font-size: 20px; }
+.share-qr-body p { margin: 0; color: #5b6a61; font-size: 13px; }
+.share-qr-image { display: grid; place-items: center; min-height: 280px; min-width: 280px; background: #fff; border: 1px solid #e3e9e1; border-radius: 12px; }
+.share-qr-url { display: grid; gap: 4px; width: 100%; text-align: left; font-size: 11px; color: #5b6a61; }
+.share-qr-url input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #d7e0d6; border-radius: 8px; font: inherit; font-size: 12px; }
+.share-qr-warning { color: #8a5a00 !important; background: #fff6e0; border-radius: 8px; padding: 8px 10px; text-align: left; }
+.narration-dock { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 40; display: grid; gap: 8px; width: min(520px, calc(100vw - 32px)); padding: 10px; background: #fff; border: 1px solid #d7e0d6; border-radius: 14px; box-shadow: 0 8px 28px rgba(30, 50, 40, .18); }
+.narration-dock-row { display: flex; align-items: center; gap: 10px; }
+.narration-dock-row.is-error { color: #a33; }
+.narration-dock-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #e8eee5; color: #477456; flex: none; }
+.narration-dock-text { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 12px; }
+.narration-dock-text small { color: #8a5a00; font-size: 11px; }
+.narration-dock-button { border: 1px solid #d7e0d6; background: #fff; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; flex: none; }
+.narration-dock-button.is-primary { background: #477456; border-color: #477456; color: #fff; }
+.narration-dock-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #36453d; cursor: pointer; }

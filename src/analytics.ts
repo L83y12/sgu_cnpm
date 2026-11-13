@@ -23,17 +23,18 @@ async function post(path: string, data: Record<string, unknown>) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ visitorId: getVisitorId(), ...data }),
-      keepalive: path.endsWith('/end'),
+      keepalive: path.endsWith('/end') || path.endsWith('/heartbeat'),
     })
   } catch { /* Analytics should not block the app when the API is offline. */ }
 }
 
-export async function sendHeartbeat() { await post('/api/analytics/heartbeat', {}) }
-export async function reportListeningStart(poiId: number) { await post('/api/analytics/listen/start', { poiId }) }
+/** poiId = the place being listened to right now, or null when not listening. */
+export async function sendHeartbeat(poiId: number | null = null) { await post('/api/analytics/heartbeat', { poiId }) }
+export async function reportListeningStart(poiId: number, preview = false) { await post('/api/analytics/listen/start', { poiId, preview }) }
 export async function reportListeningEnd(poiId: number) { await post('/api/analytics/listen/end', { poiId }) }
 
 export async function fetchAnalytics(): Promise<AnalyticsSnapshot> {
   const response = await fetch(`${apiBase}/api/analytics`)
-  if (!response.ok) throw new Error('Không tải được số liệu hoạt động.')
+  if (!response.ok) throw new Error('Could not load activity figures.')
   return response.json() as Promise<AnalyticsSnapshot>
 }

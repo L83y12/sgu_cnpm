@@ -37,6 +37,7 @@ export interface DemoPlace {
   lng: number
   campusId: CampusId
   localized?: boolean
+  triggerRadius?: number
 }
 
 function place(
