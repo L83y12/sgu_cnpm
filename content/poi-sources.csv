@@ -1,0 +1,7 @@
+﻿Mã,Nguồn,Link
+S1,"Wikipedia tiếng Việt - Trường Đại học Sài Gòn (bài còn sơ khai, thiếu chú thích; dùng để tham khảo, cần đối chiếu)",https://vi.wikipedia.org/wiki/Trường_Đại_học_Sài_Gòn
+S2,Wikipedia tiếng Anh - Saigon University,https://en.wikipedia.org/wiki/Saigon_University
+S3,"Báo Tiền Phong, 22/03/2026 - Những trường đại học sở hữu vị trí đắc địa nhất TPHCM",https://tienphong.vn/nhung-truong-dai-hoc-so-huu-vi-tri-dac-dia-nhat-tphcm-post1828985.html
+S4,"Phòng Công tác Sinh viên SGU - mục 'Liên kết các khoa' (năm học 2021-2022), mã phòng văn phòng khoa",https://ctsv.sgu.edu.vn/webin/menutrai/stsv/nh20212022/11.pdf
+S5,Trung tâm Học liệu SGU - thông báo 'Mở cửa phục vụ vào thứ Bảy' (10/09/2019),https://lib.sgu.edu.vn/trangtintintucchitiet.aspx?Id=136
+S6,"Dữ liệu của nhóm: server/sql/sgu_go.sql (tên, loại, tọa độ POI)",nhánh feature/sql-server-database
