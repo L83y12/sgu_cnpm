@@ -1,19 +1,22 @@
-import { HashRouter, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './app/AppLayout'
 import { NotFoundPage } from './app/NotFoundPage'
-import { PoiDetailPage } from './features/poi/pages/PoiDetailPage'
-import { PoiListPage } from './features/poi/pages/PoiListPage'
-import './App.css'
+import { GuidePage } from './features/guide/GuidePage'
+import { MapPage } from './features/map/MapPage'
+import { AdminPage } from './features/admin/AdminPage'
 
 function App() {
   return (
     <HashRouter>
       <Routes>
         <Route element={<AppLayout />}>
-          <Route index element={<PoiListPage />} />
-          <Route path="poi/:poiId" element={<PoiDetailPage />} />
-          <Route path="*" element={<NotFoundPage />} />
+          <Route path="/" element={<GuidePage />} />
+          <Route path="/explore" element={<MapPage />} />
+          <Route path="/map" element={<Navigate to="/explore" replace />} />
+          <Route path="/saved" element={<Navigate to="/" replace />} />
         </Route>
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </HashRouter>
   )

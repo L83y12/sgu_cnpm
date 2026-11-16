@@ -1,9 +1,19 @@
+export interface GeoCoordinates {
+  latitude: number
+  longitude: number
+}
+
 export interface Poi {
   id: string
   name: string
   description: string
   category: string
   imageUrl?: string
+  coordinates?: GeoCoordinates
+}
+
+export interface MappablePoi extends Poi {
+  coordinates: GeoCoordinates
 }
 
 export interface PoiCardProps {
