@@ -24,7 +24,11 @@ export type LeafletMap = {
   setZoom: (zoom: number) => LeafletMap
   fitBounds: (points: readonly LatLng[], options?: Record<string, unknown>) => LeafletMap
   remove: () => void
-  removeLayer: (layer: LeafletCircleMarker) => LeafletMap
+  removeLayer: (layer: LeafletCircleMarker | LeafletPolyline) => LeafletMap
+}
+export type LeafletPolyline = {
+  addTo: (map: LeafletMap) => LeafletPolyline
+  setLatLngs: (points: readonly LatLng[]) => LeafletPolyline
 }
 export type LeafletApi = {
   map: (element: HTMLElement, options?: Record<string, unknown>) => LeafletMap
@@ -33,6 +37,7 @@ export type LeafletApi = {
   circleMarker: (position: LatLng, options?: Record<string, unknown>) => LeafletCircleMarker
   circle: (position: LatLng, options?: Record<string, unknown>) => LeafletCircleMarker
   divIcon: (options: Record<string, unknown>) => unknown
+  polyline: (points: readonly LatLng[], options?: Record<string, unknown>) => LeafletPolyline
   control: {
     attribution: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
     scale: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
@@ -79,4 +84,3 @@ export function loadLeaflet(): Promise<LeafletApi> {
   leafletLoader = loading
   return loading
 }
-

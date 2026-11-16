@@ -727,3 +727,56 @@ BEGIN
   GRANT SELECT, INSERT ON dbo.VISIT_LOG TO sgu_app;
 END;
 GO
+
+/* Preview listens (also in add_preview_stats.sql for existing databases). */
+IF OBJECT_ID(N'dbo.POI_PREVIEW', N'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.POI_PREVIEW (
+    poi_id INT NOT NULL,
+    visitor_id NVARCHAR(100) NOT NULL,
+    first_previewed_at DATETIME2(3) NOT NULL CONSTRAINT DF_POI_PREVIEW_first_previewed_at DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_POI_PREVIEW PRIMARY KEY (poi_id, visitor_id),
+    CONSTRAINT FK_POI_PREVIEW_POI FOREIGN KEY (poi_id) REFERENCES dbo.POI(id) ON DELETE CASCADE
+  );
+END;
+GO
+
+IF DATABASE_PRINCIPAL_ID(N'sgu_app') IS NOT NULL
+  GRANT SELECT, INSERT ON dbo.POI_PREVIEW TO sgu_app;
+GO
+
+/* Trigger radius after field testing (also in update_trigger_radius.sql). */
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 1;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 2;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 5;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 6;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 7;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 8;
+UPDATE dbo.POI SET trigger_radius = 80 WHERE id = 9;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 10;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 11;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 12;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 13;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 14;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 15;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 16;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 17;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 18;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 19;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 20;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 21;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 22;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 23;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 24;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 25;
+UPDATE dbo.POI SET trigger_radius = 50 WHERE id = 26;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 27;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 28;
+UPDATE dbo.POI SET trigger_radius = 60 WHERE id = 29;
+GO
+
+/* Campus 2 photos (also in update_campus2_images.sql). */
+UPDATE dbo.POI SET image_url = N'/src/assets/toa-b-coso-2.webp' WHERE id = 27;
+UPDATE dbo.POI SET image_url = N'/src/assets/toa-a-coso-2.webp' WHERE id = 28;
+UPDATE dbo.POI SET image_url = N'/src/assets/toa-c-coso-2.webp' WHERE id = 29;
+GO

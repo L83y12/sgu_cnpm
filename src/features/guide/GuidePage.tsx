@@ -34,14 +34,17 @@ export function GuidePage() {
   }, [mappable, userPosition])
 
   const pickedId = picked && picked.nearbyAtPick === (nearbyPlace?.id ?? null) ? picked.id : null
-  const activeId = (narration.playing || narration.paused ? narration.poiId : null) ?? pickedId ?? nearbyPlace?.id ?? nearest?.id ?? mappable[0]?.id ?? null
+  // A place tapped on the map wins; otherwise the narration that is loaded, then the place in range, then the nearest.
+  const loadedId = narration.playing || narration.paused ? narration.poiId : null
+  const activeId = pickedId ?? loadedId ?? nearbyPlace?.id ?? nearest?.id ?? mappable[0]?.id ?? null
   const active = mappable.find((place) => place.id === activeId) ?? null
-  const campus = campuses.find((item) => item.id === (active?.campusId ?? 'main')) ?? campuses[0]
-  const campusPlaces = useMemo<MapPoi[]>(
-    () => mappable.filter((place) => place.campusId === campus.id).map((place) => ({
+  const loadedElsewhere = loadedId !== null && loadedId !== activeId ? mappable.find((place) => place.id === loadedId) ?? null : null
+  // Every campus is on the map; it pans to the active place, so the starting view never changes.
+  const mapPlaces = useMemo<MapPoi[]>(
+    () => mappable.map((place) => ({
       id: place.id, name: place.name, category: place.category, location: place.location, lat: place.lat, lng: place.lng,
     })),
-    [campus.id, mappable],
+    [mappable],
   )
 
   const playingThis = Boolean(active) && narration.playing && narration.poiId === active?.id
@@ -79,10 +82,10 @@ export function GuidePage() {
           <div className="guide-map-card">
             <div className="guide-map" aria-label={translate(language, 'guideMapLabel')}>
               <LeafletMapView
-                places={campusPlaces}
+                places={mapPlaces}
                 selectedPlaceId={active.id}
                 onSelectPlace={(place) => setPicked({ id: place.id, nearbyAtPick: nearbyPlace?.id ?? null })}
-                center={campus.center}
+                center={campuses[0].center}
                 language={language}
                 userPosition={userPosition}
                 userAccuracy={userAccuracy}
@@ -91,6 +94,7 @@ export function GuidePage() {
                 onToggleLocate={toggleLocate}
                 variant="guide"
                 activePlaceId={active.id}
+                routeTarget={{ lat: active.lat, lng: active.lng, name: active.name, radius: active.triggerRadius ?? 50 }}
               />
             </div>
             <div className="guide-legend"><span><i className="dot red" />{translate(language, 'redNow')}</span><span><i className="dot blue" />{translate(language, 'blueOthers')}</span><span><i className="dot you" />{translate(language, 'currentLocation')}</span></div>
@@ -102,7 +106,7 @@ export function GuidePage() {
               <i />{translate(language, statusKey)}
             </div>
             <h2>{active.name}</h2>
-            <div className="guide-meta"><span>{active.category}</span>{distance && <span>{distance}</span>}<span>{translate(language, 'heardCount', { count: stats?.heard ?? 0 })}</span><span>{translate(language, 'currentlyListening', { count: stats?.active ?? 0 })}</span></div>
+            <div className="guide-meta"><span>{active.category}</span>{distance && <span>{distance}</span>}<span>{translate(language, 'heardCount', { count: stats?.heard ?? 0 })}</span><span>{translate(language, 'previewCount', { count: stats?.preview ?? 0 })}</span><span>{translate(language, 'currentlyListening', { count: stats?.active ?? 0 })}</span></div>
             <p className="guide-description">{active.description}</p>
             {active.narration && <details className="guide-transcript"><summary>{translate(language, 'transcript')}</summary><p>{active.narration}</p></details>}
 
@@ -114,6 +118,12 @@ export function GuidePage() {
             </label>
 
             <NarrationProgress active={playingThis || pausedThis} getProgress={getNarrationProgress} seekTo={seekNarrationTo} label={translate(language, 'audioPosition')} />
+            {loadedElsewhere && (
+              <p className="guide-note guide-elsewhere">
+                {translate(language, narration.playing ? 'nowPlaying' : 'pausedAt')}: <strong>{loadedElsewhere.name}</strong>
+                <button onClick={() => setPicked(null)}>{translate(language, 'showIt')}</button>
+              </p>
+            )}
             <div className="guide-controls" role="group" aria-label={translate(language, 'narrationTitle')}>
               <button onClick={() => seekNarration(-5)} disabled={!playingThis && !pausedThis} aria-label={translate(language, 'back5')}>↺ <span>5s</span></button>
               <button className={`guide-play${playingThis ? ' is-playing' : ''}`} onClick={togglePlay} disabled={!narrationSupported} aria-label={playingThis ? translate(language, 'pause') : pausedThis ? translate(language, 'resume') : inRange ? translate(language, 'playNarration') : translate(language, 'previewListen')}>

@@ -25,3 +25,24 @@ export function distanceMeters(first: { lat: number; lng: number }, second: { la
 export function formatDistance(meters: number) {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`
 }
+
+/** Google Maps directions to the campus that contains this point. Google cannot route to a
+ * spot inside the campus (it snaps to the university), so the link targets the campus itself. */
+export function campusDirectionsUrl(point: { lat: number; lng: number }) {
+  const campus = campuses.reduce((best, item) =>
+    distanceMeters(point, { lat: item.center[0], lng: item.center[1] }) < distanceMeters(point, { lat: best.center[0], lng: best.center[1] }) ? item : best)
+  const destination = `Trường Đại học Sài Gòn, ${campus.address}`
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`
+}
+
+const compass = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
+
+/** Compass direction (8 points) from one point to another. */
+export function compassDirection(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
+  const radians = Math.PI / 180
+  const y = Math.sin((to.lng - from.lng) * radians) * Math.cos(to.lat * radians)
+  const x = Math.cos(from.lat * radians) * Math.sin(to.lat * radians)
+    - Math.sin(from.lat * radians) * Math.cos(to.lat * radians) * Math.cos((to.lng - from.lng) * radians)
+  const bearing = (Math.atan2(y, x) / radians + 360) % 360
+  return compass[Math.round(bearing / 45) % 8]
+}

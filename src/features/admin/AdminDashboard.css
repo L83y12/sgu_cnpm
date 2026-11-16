@@ -86,3 +86,19 @@
 .admin-bar small { color: #98a39a; font-size: 9px; }
 .admin-empty-note { margin: 0; color: #98a39a; font-size: 11px; }
 @media (max-width: 900px) { .admin-site-body { flex-direction: column; gap: 0; width: calc(100% - 32px); }.admin-sidebar { position: static; flex: none; width: 100%; grid-auto-flow: column; margin-top: 16px; }.admin-site-main { width: 100%; } }
+.admin-table-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-row-delete:hover { border-color: #efcfca; color: #a6534b; background: #fff7f5; }
+.admin-field { display: grid; gap: 5px; color: #5e6e63; font-size: 9px; font-weight: 700; }
+.admin-field-label b { color: #b2483d; }
+.admin-field-meta { display: flex; justify-content: space-between; gap: 10px; color: #98a39a; font-size: 8px; font-weight: 500; }
+.admin-field-meta.is-near { color: #a87b39; }
+.admin-field-meta.is-full { color: #b2483d; font-weight: 700; }
+.admin-image-upload { display: flex; align-items: center; gap: 12px; }
+.admin-image-upload img, .admin-image-empty { width: 110px; height: 74px; flex-shrink: 0; object-fit: cover; border: 1px solid #e3e9e2; border-radius: 8px; }
+.admin-image-empty { display: grid; place-items: center; color: #a0aaa2; background: #f6f8f5; font-size: 9px; font-weight: 500; }
+.admin-image-upload > div { display: grid; gap: 5px; justify-items: start; }
+.admin-image-upload small { color: #98a39a; font-size: 8px; font-weight: 500; }
+.admin-link-button { padding: 0; border: 0; background: none; color: #a6534b; font-size: 9px; text-decoration: underline; cursor: pointer; }
+.admin-delete-button { min-height: 34px; margin-right: auto; padding: 0 12px; border: 1px solid #efcfca; border-radius: 7px; color: #a6534b; background: #fff7f5; font-size: 9px; font-weight: 700; cursor: pointer; }
+.admin-delete-button:hover { background: #fdecea; }
+

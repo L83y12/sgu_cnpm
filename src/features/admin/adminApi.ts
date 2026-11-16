@@ -41,6 +41,7 @@ export const adminApi = {
   createPoi(poi: Omit<AdminPoi, 'id' | 'location'> & { location?: string; status?: 'draft' | 'published' }) {
     return request<AdminPoi & { status: 'draft' | 'published' }>('/api/admin/pois', { method: 'POST', body: JSON.stringify(poi) })
   },
+  deletePoi(id: number) { return request<{ ok: true }>(`/api/admin/pois/${id}`, { method: 'DELETE' }) },
   updatePoi(id: number, patch: Partial<AdminPoi> & { status?: 'draft' | 'published' }) { return request<AdminPoi & { status: string }>(`/api/admin/pois/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }) },
 }
 

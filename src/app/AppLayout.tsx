@@ -184,7 +184,8 @@ export function AppLayout() {
     () => places.filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng)),
     [places],
   )
-  const nearbyPlace = useMemo(() => findPlaceInRange(userPosition, mappablePlaces), [mappablePlaces, userPosition])
+  const userAccuracy = location.accuracy
+  const nearbyPlace = useMemo(() => findPlaceInRange(userPosition, mappablePlaces, userAccuracy), [mappablePlaces, userAccuracy, userPosition])
   const { play: startNarration, stop: stopNarration, pause: pauseNarration, seek: seekNarration, seekTo: seekNarrationTo, getProgress: getNarrationProgress, supported: narrationSupported, state: narrationState } = narration
 
   const setContentLang = useCallback((code: string) => {
@@ -195,16 +196,16 @@ export function AppLayout() {
 
   const isNearPlace = useCallback((id: number) => {
     const place = mappablePlaces.find((item) => item.id === id)
-    return place ? isInRange(userPosition, place) : false
-  }, [mappablePlaces, userPosition])
+    return place ? isInRange(userPosition, place, userAccuracy) : false
+  }, [mappablePlaces, userAccuracy, userPosition])
 
   // Listening is a normal "heard" listen only when the visitor is within range of
   // the place; anywhere else it is a preview that is not counted.
   const playNarration = useCallback((id: number) => {
     const place = places.find((item) => item.id === id)
     if (!place) return
-    startNarration(place, !isInRange(userPosition, place), contentLang)
-  }, [contentLang, places, startNarration, userPosition])
+    startNarration(place, !isInRange(userPosition, place, userAccuracy), contentLang)
+  }, [contentLang, places, startNarration, userAccuracy, userPosition])
 
   // Auto-play once per visit when the visitor walks into a place's range. Browsers only
   // allow speech after the visitor has interacted with the page, otherwise the
@@ -215,11 +216,19 @@ export function AppLayout() {
       announcedPlaceId.current = null
       return
     }
-    if (announcedPlaceId.current === nearbyPlace.id) return
-    announcedPlaceId.current = nearbyPlace.id
+    if (announcedPlaceId.current === nearbyPlace.id || !autoPlay) return
+    // Browsers allow sound only after the visitor has touched the page (e.g. "Turn on location").
+    // Until then nothing is marked, so it starts as soon as it is allowed.
     const userHasInteracted = navigator.userActivation?.hasBeenActive ?? true
-    if (autoPlay && userHasInteracted && !narrationState.playing) startNarration(nearbyPlace, false, contentLang)
-  }, [autoPlay, contentLang, nearbyPlace, narrationState.playing, startNarration])
+    if (!userHasInteracted) return
+    const loadedHere = narrationState.poiId === nearbyPlace.id && (narrationState.playing || narrationState.paused)
+    if (loadedHere) { announcedPlaceId.current = nearbyPlace.id; return }
+    // Do not cut off a narration the visitor is really listening to at a place; a preview of
+    // somewhere else gives way to the place they just walked up to.
+    if (narrationState.playing && !narrationState.preview) return
+    announcedPlaceId.current = nearbyPlace.id
+    startNarration(nearbyPlace, false, contentLang)
+  }, [autoPlay, contentLang, nearbyPlace, narrationState.paused, narrationState.playing, narrationState.poiId, narrationState.preview, startNarration])
 
   const playingPlace = narrationState.playing
     ? places.find((place) => place.id === narrationState.poiId) ?? null
@@ -280,13 +289,6 @@ export function AppLayout() {
             </NavLink>
           ))}
         </nav>
-        <div className="side-divider" />
-        <div className="side-label">{translate(language, 'suggestions')}</div>
-        <Link className="route-card" to="/">
-          <span className="route-icon"><Icon name="sun" size={19} /></span>
-          <span><strong>{translate(language, 'route')}</strong><small>{translate(language, 'routeDuration')}</small></span>
-          <Icon name="chevron" size={16} />
-        </Link>
         <div className="sidebar-bottom">
           <div className="offline-card"><span className="offline-dot" /><div><strong>{translate(language, 'online')}</strong><small>{translate(language, 'mapReady')}</small></div><Icon name="map" size={17} /></div>
         </div>

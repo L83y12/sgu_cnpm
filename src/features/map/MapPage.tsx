@@ -6,7 +6,7 @@ import { fallbackPoiImage } from '../../assets/poiImage'
 import { translate } from '../../i18n/translations'
 import { localizedCampusAddress } from '../../i18n/placeTranslations'
 import type { CampusId, DemoPlace } from '../poi/data/demoPlaces'
-import { campuses, distanceMeters, formatDistance } from './campuses'
+import { campusDirectionsUrl, campuses, distanceMeters, formatDistance } from './campuses'
 import { LeafletMapView, type MapPoi } from './LeafletMapView'
 
 type MappablePlace = DemoPlace & { lat: number; lng: number }
@@ -104,6 +104,7 @@ export function MapPage() {
             tracking={tracking}
             geoMessage={geoMessage}
             onToggleLocate={toggleLocate}
+            routeTarget={selected ? { lat: selected.lat, lng: selected.lng, name: selected.name, radius: selected.triggerRadius ?? 50 } : null}
           />
         </div>
         <aside className="map-results">
@@ -116,9 +117,9 @@ export function MapPage() {
                 <p>{selected.description}</p>
                 <div className="explore-selected-actions">
                   <button className="nearest-listen" onClick={() => togglePlay(selected)}>{isPlaying(selected.id) ? translate(language, 'pause') : <><Icon name="play" size={14} /> {translate(language, 'play')}</>}</button>
-                  <a className="nearest-details" href={`https://www.google.com/maps/dir/?api=1&destination=${selected.lat},${selected.lng}`} target="_blank" rel="noreferrer">{translate(language, 'directionsLink')}</a>
+                  <a className="nearest-details" href={campusDirectionsUrl(selected)} target="_blank" rel="noreferrer">{translate(language, 'directionsLink')}</a>
                 </div>
-                <small>{translate(language, 'heardCount', { count: analytics.pois[String(selected.id)]?.heard ?? 0 })} · {translate(language, 'currentlyListening', { count: analytics.pois[String(selected.id)]?.active ?? 0 })}</small>
+                <small>{translate(language, 'heardCount', { count: analytics.pois[String(selected.id)]?.heard ?? 0 })} · {translate(language, 'previewCount', { count: analytics.pois[String(selected.id)]?.preview ?? 0 })} · {translate(language, 'currentlyListening', { count: analytics.pois[String(selected.id)]?.active ?? 0 })}</small>
               </div>
             </article>
           )}

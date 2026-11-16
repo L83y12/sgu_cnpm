@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { translate, type Locale, type TranslationKey } from '../../i18n/translations'
-import type { LatLng, LeafletCircleMarker, LeafletMap, LeafletMarker } from './leafletLoader'
+import type { LatLng, LeafletCircleMarker, LeafletMap, LeafletMarker, LeafletPolyline } from './leafletLoader'
+import { campusDirectionsUrl, compassDirection, distanceMeters, formatDistance } from './campuses'
 import { loadLeaflet } from './leafletLoader'
 
 export type MapPoi = {
@@ -52,7 +53,7 @@ function makeInfoContent(place: MapPoi, language: Locale) {
   const categoryKey = categoryTranslationKeys[canonicalCategory(place.category)]
   category.textContent = `${categoryKey ? translate(language, categoryKey) : place.category} · ${place.location}`
   const directions = document.createElement('a')
-  directions.href = `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`
+  directions.href = campusDirectionsUrl(place)
   directions.target = '_blank'
   directions.rel = 'noreferrer'
   directions.textContent = translate(language, 'directions')
@@ -80,7 +81,7 @@ function makePlaceIcon(L: NonNullable<typeof window.L>, place: MapPoi, variant: 
   })
 }
 
-export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center, language, userPosition, userAccuracy, tracking, geoMessage, onToggleLocate, variant = 'category', activePlaceId = null }: {
+export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center, language, userPosition, userAccuracy, tracking, geoMessage, onToggleLocate, variant = 'category', activePlaceId = null, routeTarget = null }: {
   places: readonly MapPoi[]
   selectedPlaceId: number | null
   onSelectPlace: (place: MapPoi) => void
@@ -94,6 +95,8 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
   /** 'guide': every pin is blue, and the active place (activePlaceId) is red. */
   variant?: 'category' | 'guide'
   activePlaceId?: number | null
+  /** Draws a straight line from the visitor to this place (until they are within its radius). */
+  routeTarget?: { lat: number; lng: number; name: string; radius: number } | null
 }) {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<LeafletMap | null>(null)
@@ -232,6 +235,26 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
   useEffect(() => { if (tracking) centeredOnUser.current = false }, [tracking])
   useEffect(() => { if (status === 'ready') syncUserMarker() }, [status, syncUserMarker, tracking])
 
+  // In-campus guidance: dashed line from the visitor to the target place.
+  const routeLine = useRef<LeafletPolyline | null>(null)
+  const route = userPosition && routeTarget
+    ? { distance: distanceMeters(userPosition, routeTarget), direction: compassDirection(userPosition, routeTarget) }
+    : null
+  const showRoute = Boolean(route && routeTarget && route.distance > routeTarget.radius && route.distance < 5000)
+  useEffect(() => {
+    const map = mapInstance.current
+    const L = window.L
+    if (status !== 'ready' || !map || !L) return
+    if (!showRoute || !userPosition || !routeTarget) {
+      if (routeLine.current) map.removeLayer(routeLine.current)
+      routeLine.current = null
+      return
+    }
+    const points: LatLng[] = [[userPosition.lat, userPosition.lng], [routeTarget.lat, routeTarget.lng]]
+    if (routeLine.current) routeLine.current.setLatLngs(points)
+    else routeLine.current = L.polyline(points, { color: '#e0352b', weight: 4, opacity: 0.85, dashArray: '8 8', interactive: false }).addTo(map)
+  }, [routeTarget, showRoute, status, userPosition])
+
   return <div className="leaflet-map-shell">
     <div className="leaflet-map-canvas" ref={mapElement} aria-label={translate(language, 'mapTitle')} />
     {status !== 'ready' && <div className="leaflet-map-placeholder" role={status === 'error' ? 'alert' : 'status'}>
@@ -242,5 +265,6 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
     </div>}
     <button className={`leaflet-map-locate${tracking ? ' is-tracking' : ''}`} onClick={onToggleLocate} aria-label={translate(language, tracking ? 'stopTracking' : 'locateMeAria')} aria-pressed={tracking}>⌖ <span>{translate(language, tracking ? 'geoTracking' : 'locateMe')}</span></button>
     {geoMessage && status === 'ready' && <div className="leaflet-map-message" role="status">{geoMessage}</div>}
+    {showRoute && route && routeTarget && status === 'ready' && <div className="leaflet-route-label" role="status">{translate(language, 'routeHint', { distance: formatDistance(route.distance), direction: translate(language, `dir_${route.direction.replace('-', '_')}` as TranslationKey), name: routeTarget.name })}</div>}
   </div>
 }

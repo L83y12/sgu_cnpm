@@ -3,7 +3,7 @@ const visitorKey = 'sgu-go-visitor-id'
 
 export type AnalyticsSnapshot = {
   activeUsers: number
-  pois: Record<string, { heard: number; active: number }>
+  pois: Record<string, { heard: number; active: number; preview?: number }>
 }
 
 export function getVisitorId() {

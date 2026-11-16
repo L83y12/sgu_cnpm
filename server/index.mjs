@@ -73,7 +73,7 @@ function toPoi(row) {
     lat: row.latitude === null ? null : Number(row.latitude),
     lng: row.longitude === null ? null : Number(row.longitude),
     image: row.image_url || '',
-    triggerRadius: row.trigger_radius ?? 40,
+    triggerRadius: row.trigger_radius ?? 50,
     localized: Boolean(row.localized_name || row.localized_description || row.localized_category || row.localized_location),
     status: row.active ? 'published' : 'draft',
   }
@@ -289,6 +289,19 @@ async function trackDevice(visitorId, userAgent) {
   }
 }
 
+let previewTableReady = true
+
+async function previewCounts() {
+  if (!previewTableReady) return {}
+  try {
+    const result = await pool.request().query('SELECT poi_id, COUNT_BIG(1) AS previews FROM dbo.POI_PREVIEW GROUP BY poi_id')
+    return Object.fromEntries(result.recordset.map((row) => [String(row.poi_id), Number(row.previews)]))
+  } catch (error) {
+    if (/Invalid object name|permission/i.test(error.message)) previewTableReady = false
+    return {}
+  }
+}
+
 async function removeExpiredVisitors() {
   await pool.request().query("DELETE FROM dbo.VISITOR_SESSION WHERE last_seen < DATEADD(SECOND, -20, SYSUTCDATETIME())")
 }
@@ -330,7 +343,7 @@ const server = createServer(async (request, response) => {
 
     if (request.method === 'GET' && url.pathname === '/api/analytics') {
       await removeExpiredVisitors()
-      const [activeResult, poiResult] = await Promise.all([
+      const [activeResult, poiResult, previews] = await Promise.all([
         pool.request().query('SELECT COUNT_BIG(1) AS count FROM dbo.VISITOR_SESSION'),
         pool.request().query(`
           WITH heard AS (
@@ -344,11 +357,15 @@ const server = createServer(async (request, response) => {
             ISNULL(heard.heard, 0) AS heard, ISNULL(active.active, 0) AS active
           FROM heard FULL OUTER JOIN active ON heard.poi_id = active.poi_id
         `),
+        previewCounts(),
       ])
       const pois = Object.fromEntries(poiResult.recordset.map((row) => [
         String(row.poiId),
-        { heard: Number(row.heard), active: Number(row.active) },
+        { heard: Number(row.heard), active: Number(row.active), preview: previews[String(row.poiId)] ?? 0 },
       ]))
+      for (const [poiId, count] of Object.entries(previews)) {
+        if (!pois[poiId]) pois[poiId] = { heard: 0, active: 0, preview: count }
+      }
       return send(response, 200, { activeUsers: Number(activeResult.recordset[0].count), pois })
     }
 
@@ -399,6 +416,26 @@ const server = createServer(async (request, response) => {
             )
               INSERT INTO dbo.POI_HEARD (poi_id, visitor_id) VALUES (@poiId, @visitorId)
           `)
+      }
+      // Previews (outside the radius) are counted separately: one per device and place.
+      if (isStart && body.preview === true && previewTableReady) {
+        try {
+          await pool.request()
+            .input('poiId', sql.Int, poiId)
+            .input('visitorId', sql.NVarChar(100), visitorId)
+            .query(`
+              IF NOT EXISTS (
+                SELECT 1 FROM dbo.POI_PREVIEW WITH (UPDLOCK, SERIALIZABLE)
+                WHERE poi_id = @poiId AND visitor_id = @visitorId
+              )
+                INSERT INTO dbo.POI_PREVIEW (poi_id, visitor_id) VALUES (@poiId, @visitorId)
+            `)
+        } catch (error) {
+          if (/Invalid object name|permission/i.test(error.message)) {
+            previewTableReady = false
+            console.warn('Preview counts are off: run server/sql/add_preview_stats.sql in SSMS to enable them.')
+          } else throw error
+        }
       }
       return send(response, 200, { ok: true })
     }
@@ -612,6 +649,15 @@ const server = createServer(async (request, response) => {
       }
 
       const poiMatch = url.pathname.match(/^\/api\/admin\/pois\/(\d+)$/)
+      if (poiMatch && request.method === 'DELETE') {
+        // Translations and "heard" rows are removed with the place (ON DELETE CASCADE).
+        const result = await pool.request()
+          .input('id', sql.Int, Number(poiMatch[1]))
+          .query('DELETE FROM dbo.POI WHERE id = @id')
+        if (!result.rowsAffected[0]) return send(response, 404, { error: 'Không tìm thấy địa điểm.' })
+        return send(response, 200, { ok: true })
+      }
+
       if (poiMatch && request.method === 'PATCH') {
         const id = Number(poiMatch[1])
         const existingResult = await pool.request()

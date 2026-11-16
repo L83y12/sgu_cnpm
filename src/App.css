@@ -346,6 +346,8 @@ h1, h2, p { margin: 0; }
 .guide-progress input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border: 3px solid #fff; border-radius: 50%; background: #2f7a52; box-shadow: 0 1px 4px #1d3a2860; }
 .guide-progress-time { display: flex; justify-content: space-between; font-size: 12px; color: #7b887f; font-variant-numeric: tabular-nums; }
 .guide-note { margin: 0; font-size: 12px; color: #7b887f; }
+.guide-elsewhere { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 9px; background: #fdf3f2; color: #8a3a32; }
+.guide-elsewhere button { margin-left: auto; padding: 4px 10px; border: 1px solid #e3b7b2; border-radius: 7px; background: #fff; color: #8a3a32; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .guide-note-warn { color: #a5523a; }
 .guide-auto { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid #edf1ea; font-size: 13px; color: #46564b; }
 .guide-auto label { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
@@ -378,3 +380,5 @@ h1, h2, p { margin: 0; }
 .map-place-play.is-playing { border-color: #c9382f; background: #c9382f; color: #fff; }
 @media (max-width: 900px) { .guide-layout { grid-template-columns: 1fr; } .guide-map { height: 340px; } }
 @media (max-width: 600px) { .campus-illustration { display: none; } .guide-photo { height: 150px; } }
+.leaflet-route-label { position: absolute; z-index: 500; left: 50%; bottom: 30px; transform: translateX(-50%); max-width: calc(100% - 150px); padding: 7px 12px; border-radius: 99px; background: #e0352b; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 3px 10px #7a1d1840; }
+@media (max-width: 600px) { .leaflet-route-label { max-width: calc(100% - 24px); } }
