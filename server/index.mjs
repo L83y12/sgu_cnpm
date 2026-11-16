@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { createServer } from 'node:http'
 import { createReadStream } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import path from 'node:path'
@@ -10,23 +10,11 @@ import { pool, sql } from './database.mjs'
 
 const scrypt = promisify(scryptCallback)
 const root = path.dirname(fileURLToPath(import.meta.url))
-const dataDir = path.join(root, 'data')
 const uploadsDir = path.join(root, 'uploads')
-const legacyPoiFile = path.join(dataDir, 'pois.json')
-const legacyUserFile = path.join(dataDir, 'admins.json')
-const legacyAnalyticsFile = path.join(dataDir, 'analytics.json')
 const port = Number(process.env.API_PORT || 8787)
 const sessionTtlMs = 12 * 60 * 60 * 1000
 
-await mkdir(dataDir, { recursive: true })
 await mkdir(uploadsDir, { recursive: true })
-
-async function readJson(file, fallback) {
-  try { return JSON.parse(await readFile(file, 'utf8')) } catch (error) {
-    if (error.code === 'ENOENT') return fallback
-    throw error
-  }
-}
 
 async function passwordHash(password, salt = randomBytes(16).toString('hex')) {
   return { salt, hash: (await scrypt(password, salt, 64)).toString('hex') }
@@ -61,32 +49,6 @@ function cleanPoi(poi, { requireLocation = true } = {}) {
   return { name, category, location, description, lat, lng, narration: String(poi.narration || ''), campusId: String(poi.campusId || 'main') }
 }
 
-function validBootstrapPoi(poi) {
-  return poi && Number.isInteger(Number(poi.id)) && Number(poi.id) > 0 && poi.name && poi.category && poi.location
-}
-
-function bootstrapPoi(poi) {
-  const lat = poi.lat === null || poi.lat === undefined || poi.lat === '' ? null : Number(poi.lat)
-  const lng = poi.lng === null || poi.lng === undefined || poi.lng === '' ? null : Number(poi.lng)
-  if ((lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) ||
-      (lng !== null && (!Number.isFinite(lng) || lng < -180 || lng > 180))) {
-    throw Object.assign(new Error('Tọa độ vĩ độ/kinh độ không hợp lệ.'), { status: 400 })
-  }
-  return {
-    id: Number(poi.id),
-    name: String(poi.name).trim(),
-    category: String(poi.category).trim(),
-    location: String(poi.location).trim(),
-    description: String(poi.description || ''),
-    narration: String(poi.narration || ''),
-    campusId: String(poi.campusId || 'main'),
-    lat,
-    lng,
-    image: String(poi.image || ''),
-    status: 'published',
-  }
-}
-
 async function storeImage(dataUrl) {
   if (!dataUrl) return ''
   const match = /^data:(image\/(?:jpeg|png|webp|gif));base64,([\w+/=]+)$/.exec(dataUrl)
@@ -111,7 +73,7 @@ function toPoi(row) {
     lat: row.latitude === null ? null : Number(row.latitude),
     lng: row.longitude === null ? null : Number(row.longitude),
     image: row.image_url || '',
-    triggerRadius: row.trigger_radius ?? 100,
+    triggerRadius: row.trigger_radius ?? 40,
     localized: Boolean(row.localized_name || row.localized_description || row.localized_category || row.localized_location),
     status: row.active ? 'published' : 'draft',
   }
@@ -200,65 +162,6 @@ async function fetchPoiLocalizations(poiIds) {
   return localizations
 }
 
-async function migrateLegacyJson() {
-  const transaction = new sql.Transaction(pool)
-  await transaction.begin()
-  try {
-    const adminCount = await new sql.Request(transaction).query('SELECT COUNT_BIG(1) AS count FROM dbo.ADMIN_USER')
-    if (Number(adminCount.recordset[0].count) === 0) {
-      const legacyAdmins = await readJson(legacyUserFile, [])
-      const roleResult = await new sql.Request(transaction)
-        .input('roleName', sql.NVarChar(100), 'Administrator')
-        .query('SELECT id FROM dbo.[ROLE] WHERE name = @roleName')
-      const roleId = roleResult.recordset[0]?.id
-      if (Array.isArray(legacyAdmins)) for (const admin of legacyAdmins) {
-        if (!admin.email || !admin.name || !admin.salt || !admin.hash) continue
-        await new sql.Request(transaction)
-          .input('roleId', sql.Int, roleId)
-          .input('email', sql.NVarChar(320), String(admin.email).toLowerCase())
-          .input('name', sql.NVarChar(200), String(admin.name))
-          .input('salt', sql.Char(32), admin.salt)
-          .input('hash', sql.Char(128), admin.hash)
-          .query('INSERT INTO dbo.ADMIN_USER (role_id, email, name, password_salt, password_hash) VALUES (@roleId, @email, @name, @salt, @hash)')
-      }
-    }
-
-    const poiCount = await new sql.Request(transaction).query('SELECT COUNT_BIG(1) AS count FROM dbo.POI')
-    if (Number(poiCount.recordset[0].count) === 0) {
-      const legacyPois = await readJson(legacyPoiFile, [])
-      if (Array.isArray(legacyPois)) for (const item of legacyPois) {
-        if (!validBootstrapPoi(item)) continue
-        await insertPoi(new sql.Request(transaction), bootstrapPoi(item))
-      }
-    }
-
-    const listenerCount = await new sql.Request(transaction).query('SELECT COUNT_BIG(1) AS count FROM dbo.POI_HEARD')
-    if (Number(listenerCount.recordset[0].count) === 0) {
-      const legacyAnalytics = await readJson(legacyAnalyticsFile, { heardUsers: {} })
-      const heardUsers = legacyAnalytics?.heardUsers
-      if (heardUsers && typeof heardUsers === 'object') {
-        for (const [poiId, visitorIds] of Object.entries(heardUsers)) {
-          if (!Number.isInteger(Number(poiId)) || !Array.isArray(visitorIds)) continue
-          for (const visitorId of visitorIds) {
-            if (typeof visitorId !== 'string' || visitorId.length < 8 || visitorId.length > 100) continue
-            await new sql.Request(transaction)
-              .input('poiId', sql.Int, Number(poiId))
-              .input('visitorId', sql.NVarChar(100), visitorId)
-              .query(`
-                IF EXISTS (SELECT 1 FROM dbo.POI WHERE id = @poiId)
-                  INSERT INTO dbo.POI_HEARD (poi_id, visitor_id) VALUES (@poiId, @visitorId)
-              `)
-          }
-        }
-      }
-    }
-    await transaction.commit()
-  } catch (error) {
-    await transaction.rollback()
-    throw error
-  }
-}
-
 async function seedDefaultAdmin() {
   const email = (process.env.SGU_ADMIN_EMAIL || '').trim().toLowerCase()
   const configuredPassword = process.env.SGU_ADMIN_PASSWORD
@@ -295,7 +198,6 @@ async function seedDefaultAdmin() {
     .query('INSERT INTO dbo.ADMIN_USER (role_id, email, name, password_salt, password_hash) VALUES (@roleId, @email, @name, @salt, @hash)')
 }
 
-await migrateLegacyJson()
 await seedDefaultAdmin()
 
 function tokenHash(token) {
@@ -348,8 +250,47 @@ async function updateActiveVisitor(visitorId, action, poiId = null, setPoi = fal
     `)
 }
 
+function deviceTypeFromUserAgent(userAgent = '') {
+  if (/ipad|tablet|(android(?!.*mobile))/i.test(userAgent)) return 'tablet'
+  if (/mobi|iphone|ipod|android/i.test(userAgent)) return 'mobile'
+  return 'desktop'
+}
+
+// Remembers each device (browser) and counts a new "visit" after 30 minutes away.
+// The tables come from server/sql/add_usage_stats.sql; until it is run, tracking is skipped.
+let usageTablesReady = true
+async function trackDevice(visitorId, userAgent) {
+  if (!usageTablesReady) return
+  try {
+    const type = deviceTypeFromUserAgent(userAgent)
+    const found = await pool.request()
+      .input('visitorId', sql.NVarChar(100), visitorId)
+      .query('SELECT DATEDIFF(MINUTE, last_seen, SYSUTCDATETIME()) AS away FROM dbo.VISITOR_DEVICE WHERE visitor_id = @visitorId')
+    const known = found.recordset.length > 0
+    const newVisit = !known || found.recordset[0].away >= 30
+    await pool.request()
+      .input('visitorId', sql.NVarChar(100), visitorId)
+      .input('type', sql.NVarChar(20), type)
+      .input('newVisit', sql.Bit, newVisit)
+      .query(known
+        ? `UPDATE dbo.VISITOR_DEVICE SET last_seen = SYSUTCDATETIME(), device_type = @type,
+             visit_count = visit_count + CASE WHEN @newVisit = 1 THEN 1 ELSE 0 END WHERE visitor_id = @visitorId`
+        : 'INSERT INTO dbo.VISITOR_DEVICE (visitor_id, device_type, last_seen) VALUES (@visitorId, @type, SYSUTCDATETIME())')
+    if (newVisit) {
+      await pool.request()
+        .input('visitorId', sql.NVarChar(100), visitorId)
+        .query('INSERT INTO dbo.VISIT_LOG (visitor_id) VALUES (@visitorId)')
+    }
+  } catch (error) {
+    if (/Invalid object name|permission/i.test(error.message)) {
+      usageTablesReady = false
+      console.warn('Usage statistics are off: run server/sql/add_usage_stats.sql in SSMS to enable them.')
+    }
+  }
+}
+
 async function removeExpiredVisitors() {
-  await pool.request().query("DELETE FROM dbo.VISITOR_SESSION WHERE last_seen < DATEADD(SECOND, -120, SYSUTCDATETIME())")
+  await pool.request().query("DELETE FROM dbo.VISITOR_SESSION WHERE last_seen < DATEADD(SECOND, -20, SYSUTCDATETIME())")
 }
 
 const server = createServer(async (request, response) => {
@@ -411,6 +352,15 @@ const server = createServer(async (request, response) => {
       return send(response, 200, { activeUsers: Number(activeResult.recordset[0].count), pois })
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/analytics/leave') {
+      const body = await bodyJson(request)
+      const visitorId = validVisitorId(body.visitorId)
+      await pool.request()
+        .input('visitorId', sql.NVarChar(100), visitorId)
+        .query('DELETE FROM dbo.VISITOR_SESSION WHERE visitor_id = @visitorId')
+      return send(response, 200, { ok: true })
+    }
+
     if (request.method === 'POST' && ['/api/analytics/heartbeat', '/api/analytics/listen/start', '/api/analytics/listen/end'].includes(url.pathname)) {
       const body = await bodyJson(request)
       const visitorId = validVisitorId(body.visitorId)
@@ -435,6 +385,7 @@ const server = createServer(async (request, response) => {
         if (!poi.recordset.length) return send(response, 404, { error: 'Không tìm thấy địa điểm.' })
       }
       await updateActiveVisitor(visitorId, isStart ? 'start' : isEnd ? 'end' : 'heartbeat', poiId, heartbeatReportsPoi)
+      if (!isStart && !isEnd) await trackDevice(visitorId, String(request.headers['user-agent'] || ''))
       // Previews (visitor is not within range of the place) show as "listening"
       // but are not counted in the "heard" total.
       if (isStart && body.preview !== true) {
@@ -504,6 +455,55 @@ const server = createServer(async (request, response) => {
 
     if (url.pathname.startsWith('/api/admin/')) {
       if (!await requireAuth(request, response)) return
+
+      if (request.method === 'GET' && url.pathname === '/api/admin/usage') {
+        // Vietnam time (UTC+7) so "today" and the daily chart match the local calendar.
+        const local = (column) => `CAST(DATEADD(HOUR, 7, ${column}) AS date)`
+        const todayLocal = local('SYSUTCDATETIME()')
+        const top = await pool.request().query(`
+          SELECT TOP 5 poi.id, poi.name, COUNT_BIG(1) AS heard
+          FROM dbo.POI_HEARD AS heard JOIN dbo.POI AS poi ON poi.id = heard.poi_id
+          GROUP BY poi.id, poi.name ORDER BY COUNT_BIG(1) DESC, poi.id
+        `)
+        const heardTotal = await pool.request().query('SELECT COUNT_BIG(1) AS total FROM dbo.POI_HEARD')
+        const result = {
+          usageAvailable: false,
+          devices: 0, devicesToday: 0, visits: 0, visitsToday: 0,
+          deviceTypes: { mobile: 0, tablet: 0, desktop: 0 },
+          visitsByDay: [],
+          heardTotal: Number(heardTotal.recordset[0].total),
+          topPois: top.recordset.map((row) => ({ id: row.id, name: row.name, heard: Number(row.heard) })),
+        }
+        try {
+          const [devices, days, types] = await Promise.all([
+            pool.request().query(`
+              SELECT COUNT_BIG(1) AS devices,
+                ISNULL(SUM(CASE WHEN ${local('first_seen')} = ${todayLocal} THEN 1 ELSE 0 END), 0) AS devicesToday,
+                ISNULL(SUM(visit_count), 0) AS visits
+              FROM dbo.VISITOR_DEVICE
+            `),
+            pool.request().query(`
+              SELECT ${local('started_at')} AS day, COUNT_BIG(1) AS visits
+              FROM dbo.VISIT_LOG WHERE ${local('started_at')} >= DATEADD(DAY, -6, ${todayLocal})
+              GROUP BY ${local('started_at')}
+            `),
+            pool.request().query('SELECT device_type, COUNT_BIG(1) AS total FROM dbo.VISITOR_DEVICE GROUP BY device_type'),
+          ])
+          const byDay = new Map(days.recordset.map((row) => [new Date(row.day).toISOString().slice(0, 10), Number(row.visits)]))
+          const now = new Date(Date.now() + 7 * 3600_000)
+          for (let offset = 6; offset >= 0; offset -= 1) {
+            const date = new Date(now.getTime() - offset * 86_400_000).toISOString().slice(0, 10)
+            result.visitsByDay.push({ date, visits: byDay.get(date) ?? 0 })
+          }
+          result.usageAvailable = true
+          result.devices = Number(devices.recordset[0].devices)
+          result.devicesToday = Number(devices.recordset[0].devicesToday)
+          result.visits = Number(devices.recordset[0].visits)
+          result.visitsToday = result.visitsByDay.at(-1)?.visits ?? 0
+          for (const row of types.recordset) if (row.device_type in result.deviceTypes) result.deviceTypes[row.device_type] = Number(row.total)
+        } catch (error) { console.warn('Usage statistics unavailable:', error.message) }
+        return send(response, 200, result)
+      }
 
       if (request.method === 'PUT' && url.pathname === '/api/admin/languages') {
         const body = await bodyJson(request)

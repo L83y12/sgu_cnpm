@@ -1,6 +1,6 @@
 export type GeoPoint = { lat: number; lng: number }
 
-export const defaultTriggerRadius = 100
+export const defaultTriggerRadius = 40
 
 /** Great-circle distance in metres. */
 export function distanceMeters(first: GeoPoint, second: GeoPoint) {

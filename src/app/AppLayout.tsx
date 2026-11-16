@@ -3,8 +3,8 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import sguBuilding from '../assets/sgu-building.png'
 import { resolvePoiImage } from '../assets/poiImage'
 import '../App.css'
-import { fetchAnalytics, sendHeartbeat, type AnalyticsSnapshot } from '../analytics'
-import { translate, type Locale } from '../i18n/translations'
+import { fetchAnalytics, sendHeartbeat, sendLeave, type AnalyticsSnapshot } from '../analytics'
+import { fetchLocaleOptions, translate, type Locale } from '../i18n/translations'
 import { useUserLocation } from '../location/useUserLocation'
 import { findPlaceInRange, isInRange } from '../narration/geofence'
 import { useNarration, type NarrationState } from '../narration/useNarration'
@@ -14,16 +14,13 @@ import type { DemoPlace } from '../features/poi/data/demoPlaces'
 import { fetchPublishedPois } from '../features/admin/adminApi'
 import { Icon } from './Icon'
 
-const sectionPaths = ['/', '/map', '/saved'] as const
+const sectionPaths = ['/', '/explore'] as const
 export type SectionPath = (typeof sectionPaths)[number]
 
-const savedPoisStorageKey = 'sgu-go:saved-poi-ids'
-const initialSavedPoiIds = [2]
 
 export interface SguAppContext {
-  activeNav: 'Khám phá' | 'Bản đồ' | 'Đã lưu'
+  activeNav: 'guide' | 'explore'
   activePath: SectionPath
-  saved: number[]
   language: Locale
   places: DemoPlace[]
   placesLoading: boolean
@@ -35,16 +32,28 @@ export interface SguAppContext {
   tracking: boolean
   geoMessage: string
   toggleLocate: () => void
-  toggleSaved: (id: number) => void
   narration: NarrationState
   playNarration: (id: number) => void
+  seekNarration: (seconds: number) => void
+  seekNarrationTo: (seconds: number) => void
+  getNarrationProgress: () => { current: number; duration: number } | null
+  narrationSupported: boolean
+  nearbyPlace: DemoPlace | null
+  contentLang: string
+  setContentLang: (code: string) => void
+  languageOptions: { code: string; label: string }[]
   stopNarration: () => void
+  pauseNarration: () => void
   isNearPlace: (id: number) => boolean
   autoPlay: boolean
   setAutoPlay: (value: boolean) => void
 }
 
 const autoPlayStorageKey = 'sgu-go-auto-play'
+const contentLangStorageKey = 'sgu-go-content-lang'
+const languageLabels: Record<string, string> = { en: 'English', vi: 'Tiếng Việt', ja: '日本語', ko: '한국어', zh: '中文' }
+const languageOrder = ['en', 'vi', 'ja', 'ko', 'zh']
+const defaultLanguageOptions = [{ code: 'en', label: languageLabels.en }, { code: 'vi', label: languageLabels.vi }]
 function getReturnPath(state: unknown): SectionPath | undefined {
   if (typeof state !== 'object' || state === null || !('returnTo' in state)) {
     return undefined
@@ -54,47 +63,8 @@ function getReturnPath(state: unknown): SectionPath | undefined {
   return sectionPaths.find((path) => path === returnTo)
 }
 
-function readSavedPoiIds(): number[] {
-  const storedValue = window.localStorage.getItem(savedPoisStorageKey)
-
-  if (storedValue === null) {
-    return initialSavedPoiIds
-  }
-
-  let parsedValue: unknown
-
-  try {
-    parsedValue = JSON.parse(storedValue)
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) {
-      throw error
-    }
-
-    console.error('Saved POI data is not valid JSON; using the initial saved POIs.', error)
-    return initialSavedPoiIds
-  }
-
-  if (!Array.isArray(parsedValue)) {
-    console.error('Saved POI data has an invalid format; using the initial saved POIs.')
-    return initialSavedPoiIds
-  }
-
-  const validPoiIds = parsedValue.filter(
-    (poiId: unknown): poiId is number =>
-      typeof poiId === 'number' && Number.isSafeInteger(poiId) && poiId > 0,
-  )
-
-  if (validPoiIds.length !== parsedValue.length) {
-    console.error('Saved POI data has an invalid format; using the initial saved POIs.')
-    return initialSavedPoiIds
-  }
-
-  return [...new Set(validPoiIds)]
-}
-
 export function AppLayout() {
   const { pathname, state } = useLocation()
-  const [saved, setSaved] = useState<number[]>(readSavedPoiIds)
   const language: Locale = 'en' // The interface and POI content are English only.
   const [places, setPlaces] = useState<DemoPlace[]>([])
   const [placesLoading, setPlacesLoading] = useState(true)
@@ -105,20 +75,13 @@ export function AppLayout() {
   const userPosition = location.position
   const narration = useNarration()
   const [qrOpen, setQrOpen] = useState(false)
-  const [autoPlay, setAutoPlayState] = useState(() => window.localStorage.getItem(autoPlayStorageKey) === '1')
+  // Auto-play is the main feature, so it starts switched on unless the visitor turned it off.
+  const [autoPlay, setAutoPlayState] = useState(() => window.localStorage.getItem(autoPlayStorageKey) !== '0')
+  const [contentLang, setContentLangState] = useState(() => window.localStorage.getItem(contentLangStorageKey) || 'en')
+  const [languageOptions, setLanguageOptions] = useState(defaultLanguageOptions)
   const returnPath = getReturnPath(state)
-  const activePath = pathname.startsWith('/poi/')
-    ? returnPath ?? '/'
-    : sectionPaths.find((path) => path === pathname) ?? '/'
-  const activeNav = activePath === '/map'
-    ? 'Bản đồ'
-    : activePath === '/saved'
-      ? 'Đã lưu'
-      : 'Khám phá'
-
-  useEffect(() => {
-    window.localStorage.setItem(savedPoisStorageKey, JSON.stringify(saved))
-  }, [saved])
+  const activePath = sectionPaths.find((path) => path === pathname) ?? returnPath ?? '/'
+  const activeNav: SguAppContext['activeNav'] = activePath === '/explore' ? 'explore' : 'guide'
 
   useEffect(() => {
     document.title = translate(language, 'pageTitle')
@@ -129,9 +92,22 @@ export function AppLayout() {
     window.localStorage.setItem(autoPlayStorageKey, value ? '1' : '0')
   }, [])
   const { getListeningPoiId } = narration
+
+  // Languages the narration can be played in, as stored in the database.
+  useEffect(() => {
+    let cancelled = false
+    void fetchLocaleOptions().then((items) => {
+      if (cancelled || items.length === 0) return
+      const codes = items.map((item) => item.code).sort((a, b) => (languageOrder.indexOf(a) + 1 || 99) - (languageOrder.indexOf(b) + 1 || 99))
+      setLanguageOptions(codes.map((code) => ({ code, label: languageLabels[code] ?? code })))
+    }).catch(() => { /* Keep English and Vietnamese. */ })
+    return () => { cancelled = true }
+  }, [])
   useEffect(() => {
     let cancelled = false
     const refresh = async () => {
+      // A hidden page that is not playing audio has left; do not re-register it.
+      if (document.visibilityState === 'hidden' && getListeningPoiId() === null) return
       await sendHeartbeat(getListeningPoiId())
       try {
         const result = await fetchAnalytics()
@@ -143,16 +119,30 @@ export function AppLayout() {
       }
     }
     void refresh()
-    const interval = window.setInterval(() => void refresh(), 12_000)
+    const interval = window.setInterval(() => void refresh(), 5_000)
+    // Closing the page or leaving the tab frees this visitor's slot immediately.
+    // A visitor who is listening keeps their slot while the page is merely hidden.
+    const onPageHide = () => void sendLeave()
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        if (getListeningPoiId() === null) void sendLeave()
+      } else {
+        void refresh()
+      }
+    }
+    window.addEventListener('pagehide', onPageHide)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       cancelled = true
       window.clearInterval(interval)
+      window.removeEventListener('pagehide', onPageHide)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [getListeningPoiId])
 
   useEffect(() => {
     let cancelled = false
-    void fetchPublishedPois(language).then((published) => {
+    void fetchPublishedPois(contentLang).then((published) => {
       if (cancelled) return
       const databasePlaces: DemoPlace[] = published.map((poi) => ({
         id: poi.id,
@@ -182,7 +172,7 @@ export function AppLayout() {
       if (!cancelled) setPlacesLoading(false)
     })
     return () => { cancelled = true }
-  }, [language, placesVersion])
+  }, [contentLang, placesVersion])
 
   function reloadPlaces() {
     setPlacesLoading(true)
@@ -190,20 +180,18 @@ export function AppLayout() {
     setPlacesVersion((current) => current + 1)
   }
 
-  function toggleSaved(id: number) {
-    setSaved((current) =>
-      current.includes(id)
-        ? current.filter((savedId) => savedId !== id)
-        : [...current, id],
-    )
-  }
-
   const mappablePlaces = useMemo(
     () => places.filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng)),
     [places],
   )
   const nearbyPlace = useMemo(() => findPlaceInRange(userPosition, mappablePlaces), [mappablePlaces, userPosition])
-  const { play: startNarration, stop: stopNarration, state: narrationState } = narration
+  const { play: startNarration, stop: stopNarration, pause: pauseNarration, seek: seekNarration, seekTo: seekNarrationTo, getProgress: getNarrationProgress, supported: narrationSupported, state: narrationState } = narration
+
+  const setContentLang = useCallback((code: string) => {
+    stopNarration()
+    setContentLangState(code)
+    window.localStorage.setItem(contentLangStorageKey, code)
+  }, [stopNarration])
 
   const isNearPlace = useCallback((id: number) => {
     const place = mappablePlaces.find((item) => item.id === id)
@@ -215,8 +203,8 @@ export function AppLayout() {
   const playNarration = useCallback((id: number) => {
     const place = places.find((item) => item.id === id)
     if (!place) return
-    startNarration(place, !isInRange(userPosition, place))
-  }, [places, startNarration, userPosition])
+    startNarration(place, !isInRange(userPosition, place), contentLang)
+  }, [contentLang, places, startNarration, userPosition])
 
   // Auto-play once per visit when the visitor walks into a place's range. Browsers only
   // allow speech after the visitor has interacted with the page, otherwise the
@@ -230,8 +218,8 @@ export function AppLayout() {
     if (announcedPlaceId.current === nearbyPlace.id) return
     announcedPlaceId.current = nearbyPlace.id
     const userHasInteracted = navigator.userActivation?.hasBeenActive ?? true
-    if (autoPlay && userHasInteracted && !narrationState.playing) startNarration(nearbyPlace, false)
-  }, [autoPlay, nearbyPlace, narrationState.playing, startNarration])
+    if (autoPlay && userHasInteracted && !narrationState.playing) startNarration(nearbyPlace, false, contentLang)
+  }, [autoPlay, contentLang, nearbyPlace, narrationState.playing, startNarration])
 
   const playingPlace = narrationState.playing
     ? places.find((place) => place.id === narrationState.poiId) ?? null
@@ -240,7 +228,6 @@ export function AppLayout() {
   const outletContext: SguAppContext = {
     activeNav,
     activePath,
-    saved,
     language,
     places,
     placesLoading,
@@ -252,10 +239,18 @@ export function AppLayout() {
     tracking: location.tracking,
     geoMessage: location.message,
     toggleLocate: location.toggle,
-    toggleSaved,
     narration: narrationState,
     playNarration,
+    seekNarration,
+    seekNarrationTo,
+    getNarrationProgress,
+    narrationSupported,
+    nearbyPlace,
+    contentLang,
+    setContentLang,
+    languageOptions,
     stopNarration,
+    pauseNarration,
     isNearPlace,
     autoPlay,
     setAutoPlay,
@@ -271,9 +266,8 @@ export function AppLayout() {
         <div className="side-label">{translate(language, 'navGroup')}</div>
         <nav className="main-nav" aria-label="Main navigation">
           {[
-            { label: translate(language, 'discover'), icon: 'compass', to: '/' as const },
-            { label: translate(language, 'map'), icon: 'map', to: '/map' as const },
-            { label: translate(language, 'saved'), icon: 'heart', to: '/saved' as const },
+            { label: translate(language, 'guide'), icon: 'headphones', to: '/' as const },
+            { label: translate(language, 'discover'), icon: 'compass', to: '/explore' as const },
           ].map((item) => (
             <NavLink
               key={item.label}
@@ -283,7 +277,6 @@ export function AppLayout() {
             >
               <Icon name={item.icon} />
               <span>{item.label}</span>
-              {item.to === '/saved' && <span className="nav-count">{saved.length}</span>}
             </NavLink>
           ))}
         </nav>
@@ -301,14 +294,14 @@ export function AppLayout() {
 
       <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumb"><span>SGU Go</span><Icon name="chevron" size={14} /><strong>{translate(language, activePath === '/map' ? 'map' : activePath === '/saved' ? 'saved' : 'discover')}</strong></div>
+          <div className="breadcrumb"><span>SGU Go</span><Icon name="chevron" size={14} /><strong>{translate(language, activePath === '/explore' ? 'discover' : 'guide')}</strong></div>
           <div className="top-actions"><span className="app-user-count" title="People using the app right now"><i />{analytics.activeUsers} <span>{translate(language, 'appUsersActive')}</span></span><button className="qr-button" onClick={() => setQrOpen(true)} aria-haspopup="dialog">{translate(language, 'showQr')}</button></div>
         </header>
         <div className="page-content">
           <Outlet context={outletContext} />
         </div>
       </main>
-      <NarrationDock
+      {activePath !== '/' && <NarrationDock
         nearby={nearbyPlace}
         playingPlace={playingPlace}
         preview={narrationState.preview}
@@ -318,7 +311,7 @@ export function AppLayout() {
         onListen={playNarration}
         onStop={stopNarration}
         onAutoPlayChange={setAutoPlay}
-      />
+      />}
       {qrOpen && <ShareQrDialog onClose={() => setQrOpen(false)} />}
     </div>
   )

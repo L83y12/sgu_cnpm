@@ -69,14 +69,6 @@ that affect both platforms.
 
 ## API integration
 
-The public API route inventory and items awaiting backend confirmation are
-tracked in [docs/api-contract.md](./docs/api-contract.md). It is a draft based
-on the lecturer-provided project material, which remains unchanged and is used
-as the source of project requirements. It is not a replacement for the
-backend's authoritative OpenAPI specification. Behavioral details stated in
-the project material are captured there; only details not specified by the
-material are marked for backend confirmation.
-
 ### Local admin API and SQL Server
 
 The Node API stores admin accounts, POIs, active visitor heartbeats, listening
@@ -124,9 +116,7 @@ npm run dev
 ```
 
 Open `http://localhost:5173/sgu_cnpm/#/admin`. The admin dashboard can add/edit
-POIs and save locale-specific content. On API startup, existing JSON
-files in `server/data/` are imported into SQL Server once when their matching
-tables are empty; the JSON files remain as backups. The API creates the account
+POIs and save locale-specific content. The API creates the account
 configured by `SGU_ADMIN_EMAIL` and `SGU_ADMIN_PASSWORD` if missing. When an
 explicit `SGU_ADMIN_PASSWORD` is configured, it also synchronizes that account's
 password on API startup. New POIs start as drafts; use the row action to publish
@@ -150,6 +140,33 @@ admin changes with teammates or deploy them, host this Node API and SQL Server,
 set `VITE_API_BASE_URL` to the API origin, and configure the database/admin
 environment variables on the server. GitHub Pages serves only the frontend
 and cannot persist these API records by itself.
+
+## App structure
+
+- **Audio guide** (home, `/`): the automatic guide. The map marks the place being narrated in red and the others in blue. The panel shows the place, a narration-language picker (languages come from the database) and the player (play/pause that keeps the position, a draggable progress bar, back 5 s, forward 5 s). With location on and auto-play enabled, walking into a place's radius starts its narration; outside the radius a place can still be previewed (not counted as heard).
+- **Explore** (`/explore`): one tab per campus with category filter, search, map and place list.
+- **Admin** (`/#/admin`): *Overview* (devices, visits, listens, top places) and *Places* (manage POIs).
+
+Device and visit statistics need two extra tables. Run `server/sql/add_usage_stats.sql` once in SSMS (Windows authentication) because the `sgu_app` login cannot create tables.
+Until then the dashboard shows a notice and everything else keeps working.
+
+## Demo with phones on any network (QR + Cloudflare quick tunnel)
+
+Phones on 4G/5G cannot reach `192.168.x.x`, so the demo needs a public HTTPS
+address. A Cloudflare quick tunnel gives one for free, without an account, and
+HTTPS also lets phones use GPS.
+
+1. One-time: `winget install Cloudflare.cloudflared`, then reopen the terminal.
+2. Terminal 1: `npm run dev:api` (needs SQL Server running).
+3. Terminal 2: `npm run dev`.
+4. Terminal 3: `cloudflared tunnel --url http://localhost:5173`. Copy the
+   `https://<random>.trycloudflare.com` address it prints.
+5. Open `https://<random>.trycloudflare.com/sgu_cnpm/` on the computer, press
+   **Share QR**, and let each phone scan the code.
+
+The address changes every time the tunnel starts, so create a new QR for each
+demo. The computer must stay on and online. Each phone counts as one active
+user (the count expires about 2 minutes after a phone closes the page).
 
 ## Web UI collaboration
 

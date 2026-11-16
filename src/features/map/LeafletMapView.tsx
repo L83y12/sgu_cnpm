@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { translate, type Locale, type TranslationKey } from '../../i18n/translations'
+import type { LatLng, LeafletCircleMarker, LeafletMap, LeafletMarker } from './leafletLoader'
+import { loadLeaflet } from './leafletLoader'
 
 export type MapPoi = {
   id: number
@@ -8,42 +10,6 @@ export type MapPoi = {
   location: string
   lat: number
   lng: number
-}
-
-type LatLng = readonly [number, number]
-type LeafletMarker = {
-  addTo: (map: LeafletMap) => LeafletMarker
-  bindPopup: (content: HTMLElement | string) => LeafletMarker
-  setPopupContent: (content: HTMLElement | string) => LeafletMarker
-  openPopup: () => LeafletMarker
-  on: (event: 'click', listener: () => void) => LeafletMarker
-}
-type LeafletCircleMarker = {
-  addTo: (map: LeafletMap) => LeafletCircleMarker
-  bindPopup: (content: HTMLElement | string) => LeafletCircleMarker
-  setLatLng: (position: LatLng) => LeafletCircleMarker
-  setRadius: (radius: number) => LeafletCircleMarker
-  setPopupContent: (content: string) => LeafletCircleMarker
-  openPopup: () => LeafletCircleMarker
-}
-type LeafletMap = {
-  setView: (center: LatLng, zoom: number) => LeafletMap
-  panTo: (center: LatLng) => LeafletMap
-  setZoom: (zoom: number) => LeafletMap
-  remove: () => void
-  removeLayer: (layer: LeafletCircleMarker) => LeafletMap
-}
-type LeafletApi = {
-  map: (element: HTMLElement, options?: Record<string, unknown>) => LeafletMap
-  tileLayer: (url: string, options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
-  marker: (position: LatLng, options?: Record<string, unknown>) => LeafletMarker
-  circleMarker: (position: LatLng, options?: Record<string, unknown>) => LeafletCircleMarker
-  circle: (position: LatLng, options?: Record<string, unknown>) => LeafletCircleMarker
-  divIcon: (options: Record<string, unknown>) => unknown
-  control: {
-    attribution: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
-    scale: (options: Record<string, unknown>) => { addTo: (map: LeafletMap) => void }
-  }
 }
 
 const markerIcons: Record<string, string> = {
@@ -67,47 +33,6 @@ const markerClasses: Record<string, string> = {
   'Ẩm thực': 'food',
   'Không gian xanh': 'green',
   'Thể thao': 'sports',
-}
-
-declare global {
-  interface Window { L?: LeafletApi }
-}
-
-let leafletLoader: Promise<LeafletApi> | null = null
-
-function loadLeaflet(): Promise<LeafletApi> {
-  if (window.L) return Promise.resolve(window.L)
-  if (leafletLoader) return leafletLoader
-
-  const loading = new Promise<LeafletApi>((resolve, reject) => {
-    if (!document.querySelector('link[data-leaflet-css]')) {
-      const stylesheet = document.createElement('link')
-      stylesheet.rel = 'stylesheet'
-      stylesheet.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-      stylesheet.dataset.leafletCss = 'true'
-      document.head.appendChild(stylesheet)
-    }
-
-    const existingScript = document.querySelector<HTMLScriptElement>('script[data-leaflet-js]')
-    if (existingScript) {
-      existingScript.addEventListener('load', () => window.L ? resolve(window.L) : reject(new Error('Leaflet chưa sẵn sàng.')), { once: true })
-      existingScript.addEventListener('error', () => reject(new Error('Không tải được thư viện bản đồ. Hãy kiểm tra kết nối mạng.')), { once: true })
-      return
-    }
-
-    const script = document.createElement('script')
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-    script.async = true
-    script.dataset.leafletJs = 'true'
-    script.onload = () => window.L ? resolve(window.L) : reject(new Error('Leaflet đã tải nhưng chưa sẵn sàng.'))
-    script.onerror = () => reject(new Error('Không tải được thư viện bản đồ. Hãy kiểm tra kết nối mạng.'))
-    document.head.appendChild(script)
-  }).catch((error: unknown) => {
-    leafletLoader = null
-    throw error
-  })
-  leafletLoader = loading
-  return loading
 }
 
 const categoryTranslationKeys: Record<string, TranslationKey> = {
@@ -135,7 +60,27 @@ function makeInfoContent(place: MapPoi, language: Locale) {
   return content
 }
 
-export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center, language, userPosition, userAccuracy, tracking, geoMessage, onToggleLocate }: {
+function makePlaceIcon(L: NonNullable<typeof window.L>, place: MapPoi, variant: 'category' | 'guide', active: boolean) {
+  if (variant === 'guide') {
+    return L.divIcon({
+      className: `leaflet-poi-icon leaflet-poi-icon--guide${active ? ' is-active' : ''}`,
+      html: `<span><b>${markerIcons.default}</b></span>`,
+      iconSize: active ? [44, 50] : [34, 40],
+      iconAnchor: active ? [22, 48] : [17, 38],
+      popupAnchor: [0, -34],
+    })
+  }
+  const markerClass = markerClasses[canonicalCategory(place.category)] ?? 'default'
+  return L.divIcon({
+    className: `leaflet-poi-icon leaflet-poi-icon--${markerClass}`,
+    html: `<span><b>${markerIcons[canonicalCategory(place.category)] ?? markerIcons.default}</b></span>`,
+    iconSize: [38, 44],
+    iconAnchor: [19, 42],
+    popupAnchor: [0, -38],
+  })
+}
+
+export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center, language, userPosition, userAccuracy, tracking, geoMessage, onToggleLocate, variant = 'category', activePlaceId = null }: {
   places: readonly MapPoi[]
   selectedPlaceId: number | null
   onSelectPlace: (place: MapPoi) => void
@@ -146,6 +91,9 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
   tracking: boolean
   geoMessage: string
   onToggleLocate: () => void
+  /** 'guide': every pin is blue, and the active place (activePlaceId) is red. */
+  variant?: 'category' | 'guide'
+  activePlaceId?: number | null
 }) {
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<LeafletMap | null>(null)
@@ -153,6 +101,9 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
   const userMarker = useRef<LeafletCircleMarker | null>(null)
   const accuracyCircle = useRef<LeafletCircleMarker | null>(null)
   const centeredOnUser = useRef(false)
+  const variantRef = useRef(variant)
+  const activeRef = useRef(activePlaceId)
+  const lastActive = useRef<number | null>(null)
   const syncUserRef = useRef<() => void>(() => {})
   const languageRef = useRef(language)
   const onSelectPlaceRef = useRef(onSelectPlace)
@@ -184,20 +135,15 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
       L.control.scale({ imperial: false }).addTo(map)
 
       places.forEach((place) => {
-        const markerClass = markerClasses[canonicalCategory(place.category)] ?? 'default'
-        const icon = L.divIcon({
-          className: `leaflet-poi-icon leaflet-poi-icon--${markerClass}`,
-          html: `<span><b>${markerIcons[canonicalCategory(place.category)] ?? markerIcons.default}</b></span>`,
-          iconSize: [38, 44],
-          iconAnchor: [19, 42],
-          popupAnchor: [0, -38],
-        })
-        const marker = L.marker([place.lat, place.lng], { title: place.name, icon })
+        const isActive = place.id === activeRef.current
+        const icon = makePlaceIcon(L, place, variantRef.current, isActive)
+        const marker = L.marker([place.lat, place.lng], { title: place.name, icon, zIndexOffset: isActive ? 1000 : 0 })
           .addTo(map)
           .bindPopup(makeInfoContent(place, languageRef.current))
           .on('click', () => onSelectPlaceRef.current(place))
         activeMarkers.set(place.id, marker)
       })
+      lastActive.current = activeRef.current
       setStatus('ready')
       syncUserRef.current()
     }).catch(() => {
@@ -228,8 +174,24 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
     const place = places.find((item) => item.id === selectedPlaceId)
     if (!place) return
     mapInstance.current.panTo([place.lat, place.lng])
-    markers.current.get(place.id)?.openPopup()
+    if (variantRef.current !== 'guide') markers.current.get(place.id)?.openPopup()
   }, [places, selectedPlaceId, status])
+
+  // Guide map: recolor the pins when the active place changes, without rebuilding the map.
+  useEffect(() => {
+    activeRef.current = activePlaceId
+    const L = window.L
+    if (status !== 'ready' || !L || variantRef.current !== 'guide') return
+    for (const id of [lastActive.current, activePlaceId]) {
+      if (id === null) continue
+      const place = places.find((item) => item.id === id)
+      const marker = markers.current.get(id)
+      if (!place || !marker) continue
+      const active = id === activePlaceId
+      marker.setIcon(makePlaceIcon(L, place, 'guide', active)).setZIndexOffset(active ? 1000 : 0)
+    }
+    lastActive.current = activePlaceId
+  }, [activePlaceId, places, status])
 
   // Draw (or move) the visitor's marker and accuracy circle. The position itself is
   // tracked by the app shell, so it keeps updating while other pages are open.
