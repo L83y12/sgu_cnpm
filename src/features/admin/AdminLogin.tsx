@@ -4,9 +4,6 @@ import './AdminLogin.css'
 
 type Props = { onLogin: () => void }
 
-const DEMO_EMAIL = 'admin@sgu.edu.vn'
-const DEMO_PASSWORD = 'sguadmin2026'
-
 export function AdminLogin({ onLogin }: Props) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -41,7 +38,6 @@ export function AdminLogin({ onLogin }: Props) {
         {error && <p className="admin-login-error" role="alert">{error}</p>}
         <button className="admin-login-submit" type="submit" disabled={busy}>{busy ? 'Đang đăng nhập…' : 'Đăng nhập'} <span>→</span></button>
       </form>
-      <div className="admin-demo-account"><strong>Tài khoản dùng thử</strong><div><span>Email</span><code>{DEMO_EMAIL}</code></div><div><span>Mật khẩu</span><code>{DEMO_PASSWORD}</code></div></div>
       <p className="admin-login-footnote">Không có tài khoản? Liên hệ quản trị viên để được cấp quyền truy cập.</p>
     </section>
     <footer className="admin-login-footer">SGU Go <span>·</span> Cổng quản trị nội dung</footer>

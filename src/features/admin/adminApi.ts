@@ -18,19 +18,35 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return body as T
 }
 
+export type UsageStats = {
+  usageAvailable: boolean
+  devices: number
+  devicesToday: number
+  visits: number
+  visitsToday: number
+  deviceTypes: { mobile: number; tablet: number; desktop: number }
+  visitsByDay: { date: string; visits: number }[]
+  heardTotal: number
+  topPois: { id: number; name: string; heard: number }[]
+}
+
 export type PoiPage = { items: (AdminPoi & { status: 'draft' | 'published' })[]; total: number; page: number; pageSize: number }
 
 export const adminApi = {
   async login(email: string, password: string) {
     return request<{ token: string; admin: { name: string; email: string } }>('/api/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) })
   },
+  usage() { return request<UsageStats>('/api/admin/usage') },
   listPois() { return request<PoiPage>('/api/admin/pois?page=1&pageSize=100') },
-  bootstrapPois(items: AdminPoi[]) { return request<{ items: AdminPoi[] }>('/api/admin/pois/bootstrap', { method: 'POST', body: JSON.stringify({ items }) }) },
-  updatePoi(id: number, patch: { status: 'draft' | 'published' }) { return request<AdminPoi & { status: string }>(`/api/admin/pois/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }) },
+  createPoi(poi: Omit<AdminPoi, 'id' | 'location'> & { location?: string; status?: 'draft' | 'published' }) {
+    return request<AdminPoi & { status: 'draft' | 'published' }>('/api/admin/pois', { method: 'POST', body: JSON.stringify(poi) })
+  },
+  deletePoi(id: number) { return request<{ ok: true }>(`/api/admin/pois/${id}`, { method: 'DELETE' }) },
+  updatePoi(id: number, patch: Partial<AdminPoi> & { status?: 'draft' | 'published' }) { return request<AdminPoi & { status: string }>(`/api/admin/pois/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }) },
 }
 
-export async function fetchPublishedPois() {
-  const response = await fetch(`${apiBase}/api/pois`)
+export async function fetchPublishedPois(language = 'vi') {
+  const response = await fetch(`${apiBase}/api/pois?lang=${encodeURIComponent(language)}`)
   if (!response.ok) throw new Error('Không tải được các địa điểm đã đăng.')
   return response.json() as Promise<(AdminPoi & { status: string })[]>
 }
