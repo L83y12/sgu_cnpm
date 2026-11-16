@@ -1,4 +1,4 @@
-name: Web CI
+name: Web and mobile CI
 
 on:
   push:
@@ -50,6 +50,32 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+  check-mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        run: npm ci
+
+      - name: Type-check mobile app
+        run: npm run typecheck
+
+      - name: Bundle mobile app for Android
+        run: npx expo export --platform android --output-dir /tmp/sgu-go-mobile
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

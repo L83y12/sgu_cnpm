@@ -150,6 +150,10 @@ and cannot persist these API records by itself.
 Device and visit statistics need two extra tables. Run `server/sql/add_usage_stats.sql` once in SSMS (Windows authentication) because the `sgu_app` login cannot create tables.
 Until then the dashboard shows a notice and everything else keeps working.
 
+## Mobile app
+
+The React Native (Expo) version lives in [mobile/](./mobile). It uses the same API and database; see [mobile/README.md](./mobile/README.md) for running it on a phone with Expo Go. The API also serves narration audio (`/api/audio/<lang>/poi-XX.mp3`, list at `/api/audio`) and bundled photos (`/api/assets/<file>`) for the app.
+
 ## Demo with phones on any network (QR + Cloudflare quick tunnel)
 
 Phones on 4G/5G cannot reach `192.168.x.x`, so the demo needs a public HTTPS

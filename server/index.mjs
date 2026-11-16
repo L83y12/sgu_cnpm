@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { createServer } from 'node:http'
 import { createReadStream } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 import path from 'node:path'
@@ -309,6 +309,46 @@ async function removeExpiredVisitors() {
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`)
   try {
+    // Which narration files exist, per language: { en: [1, 2, 5, ...], vi: [...] } (used by the mobile app).
+    if (request.method === 'GET' && url.pathname === '/api/audio') {
+      const base = path.join(root, '..', 'content', 'audio')
+      const index = {}
+      for (const lang of await readdir(base).catch(() => [])) {
+        if (!/^[a-z]{2,3}$/.test(lang)) continue
+        const files = await readdir(path.join(base, lang)).catch(() => [])
+        index[lang] = files.map((name) => /^poi-(\d+)\.mp3$/.exec(name)).filter(Boolean).map((m) => Number(m[1])).sort((a, b) => a - b)
+      }
+      return send(response, 200, index)
+    }
+
+    // Narration audio and bundled POI photos for the mobile app (the web app bundles them itself).
+    // /api/audio/<lang>/poi-XX.mp3 reads content/audio/<lang>/; /api/assets/<file> reads src/assets/.
+    const audioMatch = url.pathname.match(/^\/api\/audio\/([a-z]{2,3})\/(poi-\d+\.mp3)$/)
+    const assetMatch = url.pathname.match(/^\/api\/assets\/([\w.-]+\.(?:jpe?g|png|webp|gif))$/i)
+    if (request.method === 'GET' && (audioMatch || assetMatch)) {
+      const file = audioMatch
+        ? path.join(root, '..', 'content', 'audio', audioMatch[1], audioMatch[2])
+        : path.join(root, '..', 'src', 'assets', assetMatch[1])
+      const ext = path.extname(file).toLowerCase()
+      const type = { '.mp3': 'audio/mpeg', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' }[ext]
+      let size
+      try { size = (await stat(file)).size } catch { return send(response, 404, { error: 'Không tìm thấy tệp.' }) }
+      // Range requests let mobile players seek without downloading the whole file.
+      const range = /^bytes=(\d*)-(\d*)$/.exec(String(request.headers.range || ''))
+      if (range && (range[1] || range[2])) {
+        const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]))
+        const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1
+        if (start >= size || start > end) {
+          response.writeHead(416, { 'content-range': `bytes */${size}` })
+          return response.end()
+        }
+        response.writeHead(206, { 'content-type': type, 'accept-ranges': 'bytes', 'content-range': `bytes ${start}-${end}/${size}`, 'content-length': end - start + 1, 'cache-control': 'public, max-age=86400' })
+        return createReadStream(file, { start, end }).pipe(response)
+      }
+      response.writeHead(200, { 'content-type': type, 'accept-ranges': 'bytes', 'content-length': size, 'cache-control': 'public, max-age=86400' })
+      return createReadStream(file).pipe(response)
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/uploads/')) {
       const filename = path.basename(url.pathname.slice('/uploads/'.length))
       if (filename !== url.pathname.slice('/uploads/'.length)) return send(response, 400, { error: 'Tên ảnh không hợp lệ.' })

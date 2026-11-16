@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "SGU Go",
+    "slug": "sgu-go",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "vn.edu.sgu.sgugo",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SGU Go uses your location to play the audio guide when you walk up to a place on campus."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "vn.edu.sgu.sgugo",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-audio",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "SGU Go uses your location to play the audio guide when you walk up to a place on campus."
+        }
+      ],
+      "expo-asset"
+    ]
+  }
+}
