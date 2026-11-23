@@ -1,11 +1,13 @@
-import { useEffect, useRef, type ComponentType, type Ref } from 'react'
+import { useEffect, useMemo, useRef, type ComponentType, type Ref } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview'
+import { distanceMeters, formatDistance, nearestPairCrossing } from './geo'
 
 // react-native-webview's class typings do not resolve under React 19.3 types; same component, explicit props.
 const Web = WebView as unknown as ComponentType<WebViewProps & { ref?: Ref<WebView> }>
 
-export type MapPlace = { id: number; name: string; lat: number; lng: number }
+/** radius: scan (trigger) radius in metres, drawn as a ring around the pin. */
+export type MapPlace = { id: number; name: string; lat: number; lng: number; radius?: number }
 type Props = {
   places: MapPlace[]
   activeId: number | null
@@ -23,19 +25,24 @@ const html = `<!doctype html><html><head><meta name="viewport" content="width=de
 <style>html,body,#map{margin:0;height:100%;background:#e9eee5}
 .pin{width:26px;height:26px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 6px #0005}
 .pin.guide{background:#2f6fdb}.pin.guide.active{background:#e0352b;width:34px;height:34px}
-.pin.explore{background:#2f7a52}.pin.explore.active{background:#c9382f;width:34px;height:34px}</style></head>
+.pin.explore{background:#2f7a52}.pin.explore.active{background:#c9382f;width:34px;height:34px}
+.pin.cross{background:#f5c400}</style></head>
 <body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
-var map, markers = {}, ids = '', last = {}, userDot, userRing, line, lastActive = null;
+var map, markers = {}, rings = {}, ids = '', last = {}, userDot, userRing, line, lastActive = null, cross;
+var ringColors = {guide:['#2f6fdb','#e0352b'], explore:['#2f7a52','#c9382f']};
 function icon(variant, active){ var s = active ? 34 : 26; return L.divIcon({className:'', html:'<div class="pin '+variant+(active?' active':'')+'"></div>', iconSize:[s,s], iconAnchor:[s/2,s]}) }
+function ringStyle(variant, active){ var c = ringColors[variant][active?1:0]; return {color:c,fillColor:c,weight:active?2.5:1.5,opacity:.75,fillOpacity:active?.14:.07,dashArray:active?null:'4 4'} }
+var crossIcon = L.divIcon({className:'', html:'<div class="pin cross"></div>', iconSize:[26,26], iconAnchor:[13,26]});
 window.update = function(d){
   if(!map){ map = L.map('map',{zoomControl:true,attributionControl:true}).setView(d.center,17);
     L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map) }
   var key = d.places.map(function(p){return p.id}).join(',');
-  if(key !== ids){ Object.values(markers).forEach(function(m){map.removeLayer(m)}); markers = {}; ids = key;
-    d.places.forEach(function(p){ var m = L.marker([p.lat,p.lng],{icon:icon(d.variant,p.id===d.activeId),title:p.name}).addTo(map);
+  if(key !== ids){ Object.values(markers).forEach(function(m){map.removeLayer(m)}); Object.values(rings).forEach(function(c){map.removeLayer(c)}); markers = {}; rings = {}; ids = key;
+    d.places.forEach(function(p){ rings[p.id] = L.circle([p.lat,p.lng],Object.assign({radius:p.radius||50,interactive:false},ringStyle(d.variant,p.id===d.activeId))).addTo(map);
+      var m = L.marker([p.lat,p.lng],{icon:icon(d.variant,p.id===d.activeId),title:p.name}).addTo(map);
       m.bindTooltip(p.name); m.on('click',function(){ window.ReactNativeWebView.postMessage(String(p.id)) }); markers[p.id]=m });
     if(d.places.length && d.activeId===null){ map.fitBounds(d.places.map(function(p){return [p.lat,p.lng]}),{padding:[30,30],maxZoom:18}) } }
-  Object.keys(markers).forEach(function(id){ var active = Number(id)===d.activeId; markers[id].setIcon(icon(d.variant,active)); markers[id].setZIndexOffset(active?1000:0) });
+  Object.keys(markers).forEach(function(id){ var active = Number(id)===d.activeId; markers[id].setIcon(icon(d.variant,active)); markers[id].setZIndexOffset(active?1000:0); if(rings[id]) rings[id].setStyle(ringStyle(d.variant,active)) });
   if(d.activeId!==null && d.activeId!==lastActive){ var p = d.places.find(function(x){return x.id===d.activeId}); if(p) map.panTo([p.lat,p.lng]) }
   lastActive = d.activeId;
   if(d.user){ var ll=[d.user.lat,d.user.lng];
@@ -46,6 +53,10 @@ window.update = function(d){
   if(d.user && d.route){ var pts=[[d.user.lat,d.user.lng],[d.route.lat,d.route.lng]];
     if(line) line.setLatLngs(pts); else line=L.polyline(pts,{color:'#e0352b',weight:4,dashArray:'8 8',interactive:false}).addTo(map) }
   else if(line){ map.removeLayer(line); line=null }
+  if(d.crossing){ var c=[d.crossing.lat,d.crossing.lng];
+    if(cross){ cross.setLatLng(c); cross.setTooltipContent(d.crossing.label) }
+    else { cross=L.marker(c,{icon:crossIcon,zIndexOffset:2000}).addTo(map).bindTooltip(d.crossing.label,{direction:'top',offset:[0,-26]}) } }
+  else if(cross){ map.removeLayer(cross); cross=null }
 };
 window.ReactNativeWebView.postMessage('ready');
 </script></body></html>`
@@ -53,7 +64,14 @@ window.ReactNativeWebView.postMessage('ready');
 export function MapView({ places, activeId, variant, user, route, center, onSelect }: Props) {
   const web = useRef<WebView>(null)
   const ready = useRef(false)
-  const payload = JSON.stringify({ places, activeId, variant, user, route, center })
+  // Yellow POI pin: where the scan circles of the two places nearest the visitor's GPS cross.
+  const crossing = useMemo(() => {
+    const point = nearestPairCrossing(user, places)
+    if (!point || !user) return null
+    const where = point.kind === 'cross' ? 'circles cross' : point.kind === 'gap' ? 'midway, circles apart' : 'midway, one circle inside the other'
+    return { lat: point.lat, lng: point.lng, label: `${point.first.name} × ${point.second.name} (${where}) · ${formatDistance(distanceMeters(user, point))} from you` }
+  }, [places, user])
+  const payload = JSON.stringify({ places, activeId, variant, user, route, center, crossing })
   const latest = useRef(payload)
 
   useEffect(() => {

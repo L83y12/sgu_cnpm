@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { translate, type Locale, type TranslationKey } from '../../i18n/translations'
+import { defaultTriggerRadius } from '../../narration/geofence'
 import type { LatLng, LeafletCircleMarker, LeafletMap, LeafletMarker, LeafletPolyline } from './leafletLoader'
 import { campusDirectionsUrl, compassDirection, distanceMeters, formatDistance } from './campuses'
+import { nearestPairCrossing, type CrossingPoint } from './crossing'
 import { loadLeaflet } from './leafletLoader'
 
 export type MapPoi = {
@@ -11,6 +13,8 @@ export type MapPoi = {
   location: string
   lat: number
   lng: number
+  /** Scan (trigger) radius in metres; drawn as a ring around the pin. */
+  radius?: number
 }
 
 const markerIcons: Record<string, string> = {
@@ -34,6 +38,36 @@ const markerClasses: Record<string, string> = {
   'Ẩm thực': 'food',
   'Không gian xanh': 'green',
   'Thể thao': 'sports',
+}
+
+// Ring colours match the pin colours in App.css.
+const circleColors: Record<string, string> = {
+  architecture: '#2563a8', study: '#7042a6', food: '#c45a18', green: '#28734d', sports: '#bd4b25', default: '#397de0',
+}
+
+function circleStyle(place: MapPoi, variant: 'category' | 'guide', active: boolean) {
+  const color = variant === 'guide'
+    ? (active ? '#e0352b' : '#2f6fdb')
+    : circleColors[markerClasses[canonicalCategory(place.category)] ?? 'default']
+  return { color, fillColor: color, weight: active ? 2.5 : 1.5, opacity: 0.75, fillOpacity: active ? 0.14 : 0.07, dashArray: active ? undefined : '4 4' }
+}
+
+
+function makeCrossingContent(crossing: CrossingPoint<MapPoi>, language: Locale, userPosition: { lat: number; lng: number } | null) {
+  const content = document.createElement('div')
+  content.className = 'leaflet-map-info'
+  const title = document.createElement('strong')
+  title.textContent = translate(language, 'crossingTitle')
+  const detail = document.createElement('span')
+  const key = crossing.kind === 'cross' ? 'crossingMeet' : crossing.kind === 'gap' ? 'crossingGap' : 'crossingInside'
+  detail.textContent = translate(language, key, { first: crossing.first.name, second: crossing.second.name })
+  content.append(title, detail)
+  if (userPosition) {
+    const distance = document.createElement('span')
+    distance.textContent = translate(language, 'crossingDistance', { distance: formatDistance(distanceMeters(userPosition, crossing)) })
+    content.append(distance)
+  }
+  return content
 }
 
 const categoryTranslationKeys: Record<string, TranslationKey> = {
@@ -101,6 +135,8 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
   const mapElement = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<LeafletMap | null>(null)
   const markers = useRef(new Map<number, LeafletMarker>())
+  const circles = useRef(new Map<number, LeafletCircleMarker>())
+  const crossingMarker = useRef<LeafletMarker | null>(null)
   const userMarker = useRef<LeafletCircleMarker | null>(null)
   const accuracyCircle = useRef<LeafletCircleMarker | null>(null)
   const centeredOnUser = useRef(false)
@@ -122,6 +158,7 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
     let cancelled = false
     let activeMap: LeafletMap | null = null
     const activeMarkers = markers.current
+    const activeCircles = circles.current
     void loadLeaflet().then((L) => {
       if (cancelled || !mapElement.current) return
       const map = L.map(mapElement.current, {
@@ -139,6 +176,9 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
 
       places.forEach((place) => {
         const isActive = place.id === activeRef.current
+        const circle = L.circle([place.lat, place.lng], { radius: place.radius ?? defaultTriggerRadius, interactive: false, ...circleStyle(place, variantRef.current, isActive) })
+          .addTo(map)
+        activeCircles.set(place.id, circle)
         const icon = makePlaceIcon(L, place, variantRef.current, isActive)
         const marker = L.marker([place.lat, place.lng], { title: place.name, icon, zIndexOffset: isActive ? 1000 : 0 })
           .addTo(map)
@@ -159,6 +199,8 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
       cancelled = true
       if (mapInstance.current === activeMap) mapInstance.current = null
       activeMarkers.clear()
+      activeCircles.clear()
+      crossingMarker.current = null
       userMarker.current = null
       accuracyCircle.current = null
       activeMap?.remove()
@@ -192,6 +234,7 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
       if (!place || !marker) continue
       const active = id === activePlaceId
       marker.setIcon(makePlaceIcon(L, place, 'guide', active)).setZIndexOffset(active ? 1000 : 0)
+      circles.current.get(id)?.setStyle(circleStyle(place, 'guide', active))
     }
     lastActive.current = activePlaceId
   }, [activePlaceId, places, status])
@@ -254,6 +297,31 @@ export function LeafletMapView({ places, selectedPlaceId, onSelectPlace, center,
     if (routeLine.current) routeLine.current.setLatLngs(points)
     else routeLine.current = L.polyline(points, { color: '#e0352b', weight: 4, opacity: 0.85, dashArray: '8 8', interactive: false }).addTo(map)
   }, [routeTarget, showRoute, status, userPosition])
+
+  // Yellow POI pin: where the scan circles of the two places nearest the visitor's GPS cross.
+  const crossing = useMemo(() => nearestPairCrossing(userPosition, places), [places, userPosition])
+  useEffect(() => {
+    const map = mapInstance.current
+    const L = window.L
+    if (status !== 'ready' || !map || !L) return
+    if (!crossing) {
+      if (crossingMarker.current) map.removeLayer(crossingMarker.current)
+      crossingMarker.current = null
+      return
+    }
+    const point: LatLng = [crossing.lat, crossing.lng]
+    const content = makeCrossingContent(crossing, language, userPosition)
+    if (crossingMarker.current) {
+      crossingMarker.current.setLatLng(point).setPopupContent(content)
+    } else {
+      crossingMarker.current = L.marker(point, {
+        title: translate(language, 'crossingTitle'),
+        zIndexOffset: 2000,
+        // Same pin as the other POIs, in yellow, because it is a POI of its own.
+        icon: L.divIcon({ className: 'leaflet-poi-icon leaflet-poi-icon--crossing', html: `<span><b>${markerIcons.default}</b></span>`, iconSize: [38, 44], iconAnchor: [19, 42], popupAnchor: [0, -38] }),
+      }).addTo(map).bindPopup(content)
+    }
+  }, [crossing, language, status, userPosition])
 
   return <div className="leaflet-map-shell">
     <div className="leaflet-map-canvas" ref={mapElement} aria-label={translate(language, 'mapTitle')} />

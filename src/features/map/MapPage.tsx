@@ -34,7 +34,7 @@ export function MapPage() {
       && (!needle || `${place.name} ${place.category} ${place.location}`.toLowerCase().includes(needle)))
   }, [activeCategory, campusPlaces, query])
   const mapPlaces = useMemo<MapPoi[]>(() => filtered.map((place) => ({
-    id: place.id, name: place.name, category: place.category, location: place.location, lat: place.lat, lng: place.lng,
+    id: place.id, name: place.name, category: place.category, location: place.location, lat: place.lat, lng: place.lng, radius: place.triggerRadius,
   })), [filtered])
   // Sorting by distance only reorders the list; it must not rebuild the map markers.
   const listPlaces = useMemo(() => userPosition

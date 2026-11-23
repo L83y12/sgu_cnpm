@@ -42,7 +42,7 @@ export function GuidePage() {
   // Every campus is on the map; it pans to the active place, so the starting view never changes.
   const mapPlaces = useMemo<MapPoi[]>(
     () => mappable.map((place) => ({
-      id: place.id, name: place.name, category: place.category, location: place.location, lat: place.lat, lng: place.lng,
+      id: place.id, name: place.name, category: place.category, location: place.location, lat: place.lat, lng: place.lng, radius: place.triggerRadius,
     })),
     [mappable],
   )
@@ -97,7 +97,7 @@ export function GuidePage() {
                 routeTarget={{ lat: active.lat, lng: active.lng, name: active.name, radius: active.triggerRadius ?? 50 }}
               />
             </div>
-            <div className="guide-legend"><span><i className="dot red" />{translate(language, 'redNow')}</span><span><i className="dot blue" />{translate(language, 'blueOthers')}</span><span><i className="dot you" />{translate(language, 'currentLocation')}</span></div>
+            <div className="guide-legend"><span><i className="dot red" />{translate(language, 'redNow')}</span><span><i className="dot blue" />{translate(language, 'blueOthers')}</span><span><i className="dot you" />{translate(language, 'currentLocation')}</span><span><i className="ring" />{translate(language, 'radiusLegend')}</span><span><i className="dot yellow" />{translate(language, 'crossingLegend')}</span></div>
           </div>
 
           <article className="guide-panel">

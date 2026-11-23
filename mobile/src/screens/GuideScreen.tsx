@@ -36,7 +36,7 @@ export function GuideScreen() {
   const showRoute = distance !== null && distance > active.triggerRadius && distance < 5000
   const stats = analytics.pois[String(active.id)]
   const status = playingThis ? 'Now playing' : inRange ? 'You are in range — it plays automatically' : location.position ? 'Out of range — you can still preview it' : 'Turn on your location to start the automatic guide'
-  const mapPlaces = places.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng }))
+  const mapPlaces = places.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, radius: p.triggerRadius }))
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
@@ -48,7 +48,7 @@ export function GuideScreen() {
         route={showRoute ? active : null}
         onSelect={(id) => setPicked({ id, nearbyAt: nearby?.id ?? null })} />
       {showRoute && distance !== null && location.position && <Text style={styles.route}>≈ {formatDistance(distance)} {compassDirection(location.position, active)} to {active.name}</Text>}
-      <View style={styles.legend}><Text style={styles.legendItem}><Text style={{ color: colors.red }}>●</Text> Current place</Text><Text style={styles.legendItem}><Text style={{ color: colors.blue }}>●</Text> Other places</Text><Text style={styles.legendItem}><Text style={{ color: '#4285f4' }}>●</Text> You</Text></View>
+      <View style={styles.legend}><Text style={styles.legendItem}><Text style={{ color: colors.red }}>●</Text> Current place</Text><Text style={styles.legendItem}><Text style={{ color: colors.blue }}>●</Text> Other places</Text><Text style={styles.legendItem}><Text style={{ color: '#4285f4' }}>●</Text> You</Text><Text style={styles.legendItem}><Text style={{ color: colors.blue }}>◌</Text> Scan radius</Text><Text style={styles.legendItem}><Text style={{ color: '#f5c400' }}>●</Text> Where the 2 nearest places meet</Text></View>
       {!!location.message && <Text style={styles.warn}>{location.message}</Text>}
 
       <View style={styles.card}>
