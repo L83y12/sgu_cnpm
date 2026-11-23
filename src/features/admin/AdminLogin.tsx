@@ -4,6 +4,8 @@ import './AdminLogin.css'
 
 type Props = { onLogin: () => void }
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export function AdminLogin({ onLogin }: Props) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -14,6 +16,16 @@ export function AdminLogin({ onLogin }: Props) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const normalizedEmail = email.trim().toLowerCase()
+
+    if (!normalizedEmail || !password) {
+      setError('Vui lòng nhập đầy đủ email và mật khẩu.')
+      return
+    }
+    if (!emailPattern.test(normalizedEmail)) {
+      setError('Email không đúng định dạng (ví dụ: admin@sgu.edu.vn).')
+      return
+    }
+
     setBusy(true)
     setError('')
     try {
@@ -32,7 +44,7 @@ export function AdminLogin({ onLogin }: Props) {
       <div className="admin-login-kicker">CỔNG QUẢN TRỊ</div>
       <h1 id="admin-login-title">Đăng nhập quản trị</h1>
       <p className="admin-login-intro">Đăng nhập bằng tài khoản được cấp để quản lý địa điểm và nội dung tham quan.</p>
-      <form className="admin-login-form" onSubmit={submit}>
+      <form className="admin-login-form" onSubmit={submit} noValidate>
         <label>Email quản trị<input type="email" autoComplete="username" required value={email} onChange={(event) => { setEmail(event.target.value); setError('') }} placeholder="admin@sgu.edu.vn" /></label>
         <label>Mật khẩu<span className="admin-password-wrap"><input type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onChange={(event) => { setPassword(event.target.value); setError('') }} placeholder="Nhập mật khẩu" /><button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? 'Ẩn' : 'Hiện'}</button></span></label>
         {error && <p className="admin-login-error" role="alert">{error}</p>}
