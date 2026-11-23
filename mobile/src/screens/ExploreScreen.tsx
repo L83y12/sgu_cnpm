@@ -40,7 +40,7 @@ export function ExploreScreen() {
         ))}
       </View>
       <TextInput value={query} onChangeText={setQuery} placeholder="Search places" style={styles.search} />
-      <MapView places={filtered.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng }))} activeId={selected?.id ?? null} variant="explore" center={campus.center}
+      <MapView places={filtered.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng, radius: p.triggerRadius }))} activeId={selected?.id ?? null} variant="explore" center={campus.center}
         user={location.position ? { ...location.position, accuracy: location.accuracy } : null}
         route={selected && location.position && distanceMeters(location.position, selected) > selected.triggerRadius ? selected : null}
         onSelect={setSelectedId} />

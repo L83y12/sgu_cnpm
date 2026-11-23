@@ -73,6 +73,11 @@ const translations = {
     routeHint: '≈ {distance} {direction} to {name}', dir_north: 'north', dir_north_east: 'north-east', dir_east: 'east', dir_south_east: 'south-east', dir_south: 'south', dir_south_west: 'south-west', dir_west: 'west', dir_north_west: 'north-west',
     pause: 'Pause', resume: 'Continue', pausedAt: 'Paused', showIt: 'Show', audioPosition: 'Narration position', transcript: 'Read the narration',
     heardShort: 'heard', listeningShort: 'listening now',
+    radiusLegend: 'Scan radius', crossingLegend: 'Where the 2 nearest places meet', crossingTitle: 'Crossing of the 2 nearest places',
+    crossingMeet: 'The scan circles of {first} and {second} cross here.',
+    crossingGap: 'The circles of {first} and {second} do not touch; this is halfway across the gap between them.',
+    crossingInside: 'One of the circles of {first} and {second} lies inside the other; this is midway between them.',
+    crossingDistance: '≈ {distance} from you',
   },
 } as const
 
@@ -82,10 +87,6 @@ export type LocaleOption = { code: Locale; label: string }
 
 export const localeOptions: LocaleOption[] = [{ code: 'en', label: 'English' }]
 const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-
-export function createLocaleTranslationTemplate(): Record<string, string> {
-  return Object.fromEntries(Object.keys(translations.en).map((key) => [key, '']))
-}
 
 export async function fetchLocaleOptions(): Promise<LocaleOption[]> {
   const response = await fetch(`${apiBase}/api/languages`)

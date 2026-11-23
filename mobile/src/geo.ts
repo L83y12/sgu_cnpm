@@ -37,6 +37,43 @@ export function findPlaceInRange<T extends GeoPoint & { triggerRadius?: number }
   return best
 }
 
+export type CrossingPoint<T> = GeoPoint & { first: T; second: T; kind: 'cross' | 'gap' | 'inside' }
+
+/**
+ * Where the scan circles of the two places closest to `position` cross (the crossing nearer
+ * the visitor). If the circles do not touch: halfway across the gap; if one is inside the
+ * other: midway between the two places. Same rule as src/features/map/crossing.ts.
+ */
+export function nearestPairCrossing<T extends GeoPoint & { radius?: number }>(position: GeoPoint | null, places: readonly T[]): CrossingPoint<T> | null {
+  if (!position || places.length < 2) return null
+  const [first, second] = [...places].sort((a, b) => distanceMeters(position, a) - distanceMeters(position, b))
+  const r = Math.PI / 180
+  const ky = 6_371_000 * r
+  const kx = Math.cos(first.lat * r) * ky
+  const toLatLng = (x: number, y: number) => ({ lat: first.lat + y / ky, lng: first.lng + x / kx })
+  const bx = (second.lng - first.lng) * kx
+  const by = (second.lat - first.lat) * ky
+  const userX = (position.lng - first.lng) * kx
+  const userY = (position.lat - first.lat) * ky
+  const d = Math.hypot(bx, by)
+  const r1 = first.radius ?? defaultTriggerRadius
+  const r2 = second.radius ?? defaultTriggerRadius
+  if (d < 1e-6) return { ...toLatLng(0, 0), first, second, kind: 'inside' }
+  const ux = bx / d
+  const uy = by / d
+  if (d > r1 + r2) {
+    const along = r1 + (d - r1 - r2) / 2
+    return { ...toLatLng(ux * along, uy * along), first, second, kind: 'gap' }
+  }
+  if (d < Math.abs(r1 - r2)) return { ...toLatLng(bx / 2, by / 2), first, second, kind: 'inside' }
+  const a = (d * d + r1 * r1 - r2 * r2) / (2 * d)
+  const h = Math.sqrt(Math.max(0, r1 * r1 - a * a))
+  const p1 = { x: ux * a - uy * h, y: uy * a + ux * h }
+  const p2 = { x: ux * a + uy * h, y: uy * a - ux * h }
+  const best = Math.hypot(p1.x - userX, p1.y - userY) <= Math.hypot(p2.x - userX, p2.y - userY) ? p1 : p2
+  return { ...toLatLng(best.x, best.y), first, second, kind: 'cross' }
+}
+
 const compass = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
 export function compassDirection(from: GeoPoint, to: GeoPoint) {
   const r = Math.PI / 180

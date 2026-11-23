@@ -6,6 +6,7 @@ export type LeafletMarker = {
   openPopup: () => LeafletMarker
   setIcon: (icon: unknown) => LeafletMarker
   setZIndexOffset: (offset: number) => LeafletMarker
+  setLatLng: (position: LatLng) => LeafletMarker
   on: (event: 'click', listener: () => void) => LeafletMarker
 }
 export type LeafletCircleMarker = {
@@ -13,6 +14,8 @@ export type LeafletCircleMarker = {
   bindPopup: (content: HTMLElement | string) => LeafletCircleMarker
   setLatLng: (position: LatLng) => LeafletCircleMarker
   setRadius: (radius: number) => LeafletCircleMarker
+  setStyle: (style: Record<string, unknown>) => LeafletCircleMarker
+  bringToBack: () => LeafletCircleMarker
   on: (event: 'click', listener: () => void) => LeafletCircleMarker
   bindTooltip: (content: string, options?: Record<string, unknown>) => LeafletCircleMarker
   setPopupContent: (content: string) => LeafletCircleMarker
@@ -24,7 +27,7 @@ export type LeafletMap = {
   setZoom: (zoom: number) => LeafletMap
   fitBounds: (points: readonly LatLng[], options?: Record<string, unknown>) => LeafletMap
   remove: () => void
-  removeLayer: (layer: LeafletCircleMarker | LeafletPolyline) => LeafletMap
+  removeLayer: (layer: LeafletMarker | LeafletCircleMarker | LeafletPolyline) => LeafletMap
 }
 export type LeafletPolyline = {
   addTo: (map: LeafletMap) => LeafletPolyline
